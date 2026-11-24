@@ -2,7 +2,11 @@
 
 상태: R1 계약 제안 (ARCH-001, 2026-11-24). ADR-0001(승인), ADR-0002~0005(ARCH-001 승인 범위), ADR-0006(제안, 변경량 1분봉)을 따른다.
 
-Modular Monolith + Event-Driven + Layered. 단일 프로세스, GTK 메인 루프, inotify 전용 수신 스레드, bounded 전달 큐, 작업 큐 worker. SQLite 단일 writer는 R2에서 도입한다(DATABASE_SCHEMA.md). 이벤트 전달은 관측 결과 전달용이며 명령 실행의 필수 경로가 아니다. 외부 서비스는 쓰지 않는다.
+Modular Monolith + Event-Driven + Layered. 단일 프로세스, GTK 메인 루프, inotify 전용 수신 스레드, bounded 전달 큐, 작업 큐 worker. SQLite 단일 writer는 R2에서 도입한다(DESIGN DB 스키마). 이벤트 전달은 관측 결과 전달용이며 명령 실행의 필수 경로가 아니다. 외부 서비스는 쓰지 않는다.
+
+## 0. 처리 흐름
+
+파일 작업은 application command → job scheduler → filesystem adapter → 결과 이벤트 순서. watcher는 커널 이벤트 → normalizer → dispatcher → UI/history/index 순서. UI는 모델 갱신을 batch 처리한다. 초기 scan과 watch 등록 사이 변경은 재검증한다. 모듈별 내부 설계는 공개 계약 확정 후 작성한다.
 
 ## 1. 계층과 의존 방향
 
@@ -34,6 +38,7 @@ app (src/main.c)            조립, 수명 관리, 종료 순서
 - `src/mon/fs_mon_testing.h`처럼 `_testing.h`로 끝나는 헤더는 tests/에서만 include한다.
 - 순환 의존 금지. mon은 UI를 호출하지 않는다(콜백으로만 전달).
 - 기존 `src/app_info.{c,h}`(`filescope_info`)는 그대로 둔다. app만 사용한다.
+- SQLite(`sqlite3.h`)는 `src/his/`(R2)만 include한다. UI와 다른 모듈은 DB에 직접 접근하지 않고 his 공개 헤더를 거친다(check-architecture.sh 검사).
 
 ## 2. 디렉터리 배치
 
@@ -90,8 +95,56 @@ tests/
 | job worker (1) | job | 대기열 작업 실행 |
 | GIO 작업 스레드 | nav | 디렉터리 목록·자동완성 (GTask) |
 
-자세한 내용은 THREADING_MODEL.md. 오류 모델은 ERROR_HANDLING.md, 공개 시그니처는 INTERFACE_SPEC.md, 미결 사항(U-n, E-n)은 OPEN_QUESTIONS.md.
+자세한 내용은 DESIGN 스레드. 오류 모델은 ENGINEERING 오류, 공개 시그니처는 DESIGN 인터페이스, 미결 사항(U-n, E-n)은 PROGRESS 미결 사항.
 
 ## 6. 단계별 도입
 
 R1: core, job, fs, mon, nav, dash, ui. R2: his(SQLite, 스냅샷), src(검색), pre(미리보기), trash(휴지통 관리 화면). 변경 내용 패널과 Diff는 R2 이력에 의존한다. libarchive, GtkSourceView4, VTE, Poppler, libgit2는 해당 기능 릴리스에서 도입한다.
+
+## 7. 모듈 경계 (전체 모듈)
+
+모든 모듈은 공개 헤더를 통해서만 호출하며 내부 구조체와 DB 연결을 공유하지 않는다. 공통 core는 기능 모듈에 의존하지 않는다. watcher는 UI를 호출하지 않는다. 순환 의존 금지. 모듈 배치·의존은 §1(ADR-0004)이 정본이며 fs는 job 공개 헤더에 의존할 수 있다.
+
+| 모듈 | 책임 |
+|---|---|
+| nav | 탐색 |
+| fs | 파일 작업 |
+| mon | 감시 |
+| dash | 대시보드 |
+| his | 이력 |
+| src | 검색 |
+| pre | 미리보기 |
+| meta | 속성 |
+| disk | 디스크 |
+| trash | 휴지통 |
+| arc | 압축 |
+| job | 작업 큐 |
+| dev | 개발 도구 |
+| sec | 보안 |
+| auto | 자동화 |
+| back | 백업 |
+| sys | 장치 |
+| ui | UI/UX |
+| cfg | 설정 |
+
+### R1 dash 배치 결정 (2026-11-24, 변경량 1분봉 추가, ADR-0006)
+- 1분봉 집계(링 버퍼 30분 이상, R1은 60분), 세션 집계(DASH-001), 최근 1분 이벤트 수·반영 지연 P95(헤더 지표)는 ui가 아니라 `src/dash`(`filescope_dash`)에 둔다.
+- 이유: 메인 창 하단 패널과 "새 창으로" 떼어 낸 차트 창이 같은 데이터를 봐야 하므로 위젯 밖에 모델이 있어야 하고, 봉 계산(시·고·저·종, 분 경계, 링 버퍼)은 GTK·Xvfb 없이 시간을 고정해 단위 테스트해야 한다.
+- 의존: dash → core만. mon을 직접 구독하지 않고, ui가 mon 이벤트 배치를 받아 `fs_dash_add_events`로 넘긴다. dash는 GTK·파일 I/O·스레드를 쓰지 않는다(main 단일 스레드 객체).
+- ui는 dash 결과를 그리기만 한다(차트는 GtkDrawingArea + cairo, 스타일은 루트 DESIGN.md와 시안).
+
+## 8. ADR과 옛 문서 이름
+
+결정 기록은 `docs/adr/`(ADR-0001~0006)에 있다. ADR 본문은 작성 당시 문서 이름을 그대로 쓰므로 아래 표로 새 위치를 찾는다.
+
+| 옛 이름 | 새 위치 |
+|---|---|
+| INTERFACE_SPEC, EVENT_SPEC, THREADING_MODEL, STATE_MACHINE, MEMORY_MANAGEMENT, DATA_MODEL, DATABASE_SCHEMA, docs/architecture/DESIGN.md | docs/DESIGN.md 인터페이스·이벤트·스레드·상태·메모리·데이터 모델·DB 스키마 부분 (§0 처리 흐름은 이 문서) |
+| ARCHITECTURE, MODULE_BOUNDARIES | 이 문서 (§7) |
+| ERROR_HANDLING, SECURITY, CODING_RULES, BUILD, DEPENDENCIES, MEMORY_THREAD_RULES, ACCESSIBILITY, DESIGN_OWNERSHIP | docs/ENGINEERING.md (디자인 권한은 AGENTS.md) |
+| PRD, ROADMAP / SRS, FEATURE_SPEC, NFR | docs/PRD.md / docs/SRS.md |
+| TEST_PLAN, TEST_CASES, PERFORMANCE_TEST, BENCHMARK_BASELINE, FAULT_INJECTION, QUALITY_GATES, DEFINITION_OF_DONE, REVIEW_CHECKLIST | docs/TESTING.md |
+| OPEN_QUESTIONS, TRACEABILITY | harness/PROGRESS.md |
+| WORKFLOW, AGENT_ROLES, WORKTREE_RULES, FAILURE_POLICY, CONTEXT_MAP, prompts, templates | harness/WORKFLOW.md (CONTEXT_MAP은 AGENTS.md 표) |
+| tasks/*.md | harness/TASKS.md |
+| EVAL_SPEC | harness/EVALS.md |

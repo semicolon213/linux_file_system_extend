@@ -29,6 +29,13 @@ report_matches "nav must not depend on GTK, fs, job, mon, dash, or ui" src/nav \
     '^[[:space:]]*#include[[:space:]]*[<"](gtk|fs|job|mon|dash|ui)/'
 
 while IFS= read -r file; do
+    [[ "$file" == src/his/* ]] && continue
+    echo "$file: architecture: only src/his may include sqlite3.h" >&2
+    failed=1
+done < <(grep -RlE --include='*.c' --include='*.h' \
+    '^[[:space:]]*#include[[:space:]]*[<"]sqlite3\.h[>"]' src 2>/dev/null)
+
+while IFS= read -r file; do
     while IFS= read -r include; do
         [[ -n "$include" ]] || continue
         if [[ "$include" =~ ^([^/]+)/.*_internal\.h$ ]]; then

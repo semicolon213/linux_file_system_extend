@@ -4,7 +4,7 @@ FileScope is a native GTK3 application for Linux. This bootstrap contains the ap
 
 ## Build prerequisites
 
-On Ubuntu 22.04 or 24.04, install the required and developer packages listed in `docs/engineering/DEPENDENCIES.md`:
+On Ubuntu 22.04 or 24.04, install the required and developer packages listed in `docs/ENGINEERING.md` (의존성):
 
 ```bash
 sudo apt install build-essential cmake ninja-build pkg-config libgtk-3-dev libsqlite3-dev libayatana-appindicator3-dev xvfb clang-format clang-tidy
