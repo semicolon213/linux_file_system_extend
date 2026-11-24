@@ -36,9 +36,9 @@ FileScope는 외부 프로그램이 일으킨 파일 변경을 실시간으로 �
 
 ## Capabilities and Constraints
 
-- 기능 범위와 ID: `docs/product/FEATURE_SPEC.md` (P0 핵심 → P3 실험). 모두 계획 상태이며 구현된 기능은 아직 없다.
-- 릴리스 순서: R0 계약·빌드·하네스 → R1 탐색/CRUD/감시/작업 큐 → R2 이력/검색/미리보기/휴지통 → R3 이후 (`docs/product/ROADMAP.md`).
-- 비기능 목표(측정값 아님): 시작 2초, 이벤트 UI 반영 P95 100ms, 1만 파일 목록 1초, root 없이 실행, 오프라인 핵심 기능 (`docs/product/NFR.md`).
+- 기능 범위와 ID: `docs/SRS.md` (P0 핵심 → P3 실험). 모두 계획 상태이며 구현된 기능은 아직 없다.
+- 릴리스 순서: R0 계약·빌드·하네스 → R1 탐색/CRUD/감시/작업 큐 → R2 이력/검색/미리보기/휴지통 → R3 이후 (`docs/PRD.md`).
+- 비기능 목표(측정값 아님): 시작 2초, 이벤트 UI 반영 P95 100ms, 1만 파일 목록 1초, root 없이 실행, 오프라인 핵심 기능 (`docs/SRS.md`).
 - 오래 걸리는 I/O는 worker에서 처리하고, GTK 위젯은 메인 스레드에서만 다룬다.
 - 보장하지 않는 것: 전체 시스템 감시, 완전한 복구, 악성코드 차단.
 - UI 테마 우선순위: 다크(UI-001)가 P0, 라이트·시스템 테마는 P1.
@@ -50,7 +50,7 @@ FileScope는 외부 프로그램이 일으킨 파일 변경을 실시간으로 �
 ## Brand Commitments
 
 - 제품 이름은 FileScope다. README와 창 제목의 "Linux File Explorer"는 임시 이름이다.
-- 시각 디자인은 사용자가 Impeccable로 직접 만든다. 에이전트는 색상, 타이포그래피, 간격, 레이아웃, 아이콘, 애니메이션, 테마를 임의로 정하지 않는다 (`docs/design/DESIGN_OWNERSHIP.md`).
+- 시각 디자인은 사용자가 Impeccable로 직접 만든다. 에이전트는 색상, 타이포그래피, 간격, 레이아웃, 아이콘, 애니메이션, 테마를 임의로 정하지 않는다 (`AGENTS.md`).
 
 ## Evidence on Hand
 
@@ -66,4 +66,4 @@ FileScope는 외부 프로그램이 일으킨 파일 변경을 실시간으로 �
 
 ## Accessibility & Inclusion
 
-모든 핵심 작업 키보드 접근(NFR-019), 보이는 포커스, accessible name, 색상 외 수단으로 상태 구분, HiDPI와 글꼴 확대, 모션 감소를 지원한다. GNOME Orca 화면 읽기 프로그램과 호환되어야 하며, 개발용 Orca coordinator와는 구분한다 (`docs/design/ACCESSIBILITY.md`).
+모든 핵심 작업 키보드 접근(NFR-019), 보이는 포커스, accessible name, 색상 외 수단으로 상태 구분, HiDPI와 글꼴 확대, 모션 감소를 지원한다. GNOME Orca 화면 읽기 프로그램과 호환되어야 하며, 개발용 Orca coordinator와는 구분한다 (`docs/ENGINEERING.md`).
