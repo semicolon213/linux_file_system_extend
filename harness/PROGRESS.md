@@ -8,7 +8,7 @@ Coordinator가 갱신한다. 작업별 ID, 담당, 기준 SHA, 상태, 차단 �
 |---|---|
 | 요구사항·설계 계약 | R1 계약 승인(ARCH-001, 8615d98). 사용자 결정 U-1~U-9 기록 완료(§3 결정 기록). C++17 + gtkmm-3.0 판으로 갱신(ADR-0007 승인, ADR-0008 제안, 2026-11-24) |
 | 디자인 (메인 창, 트레이) | APPROVED (사용자 확정, 커밋 6d621d5). 루트 PRODUCT.md·DESIGN.md, docs/design/prototype. 언어 변경과 무관하게 유효 |
-| 빌드·테스트 하네스 | R0-001(C) 대체됨. R0-002 C++ 전환 IN_PROGRESS (Codex). gtkmm 3.24.9 설치 확인(2026-11-24) |
+| 빌드·테스트 하네스 | R0-001(C) 대체됨. R0-002 C++ 전환 VERIFY (b7ca5d3, make verify 0). R1-T01 core 포팅 IN_PROGRESS |
 | R1-T01 core, R1-T02 job, R1-T05 nav | C 구현(병합됨)은 C++ 포팅 대상. BACKLOG: T01은 R0-002 후, T02·T05는 T01 후 READY. 수용 조건 동일 |
 | R1-T03 fs, R1-T04 mon, R1-T07 dash | C 시도 중단·폐기. BACKLOG(C++ 계약). T04·T07은 T01 후, T03은 T01·T02 후 |
 | R1-T06 ui | BACKLOG (T03·T04·T05·T07 이후) |
