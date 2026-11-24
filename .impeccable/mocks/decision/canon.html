@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><title>FileScope — 카테고리 표준</title>
+<style>
+:root{--bg:#242424;--side:#303030;--head:#2e2e2e;--line:#3a3a3a;--ink:#ffffff;--dim:#a0a0a0;--acc:#3584e4}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:1440px;height:900px;overflow:hidden;background:var(--bg);color:var(--ink);font:13px/1.5 "Cantarell","Noto Sans KR",system-ui,sans-serif}
+header{height:48px;display:flex;align-items:center;gap:10px;padding:0 10px;background:var(--head);border-bottom:1px solid #1c1c1c}
+.btn{background:#3d3d3d;border-radius:6px;padding:4px 10px}
+.path{display:flex;gap:2px;margin-left:8px}.path span{padding:4px 10px;border-radius:6px}.path .on{background:#4a4a4a}
+.search{margin-left:auto;background:#3d3d3d;border-radius:6px;padding:4px 10px;width:220px;color:var(--dim)}
+main{display:grid;grid-template-columns:220px 1fr;height:594px}
+aside{background:var(--side);padding:8px}
+aside li{list-style:none;padding:6px 12px;border-radius:6px}
+aside li.on{background:#454545}
+aside hr{border:0;border-top:1px solid var(--line);margin:6px 0}
+table{width:100%;border-collapse:collapse}
+th{font-weight:400;color:var(--dim);text-align:left;padding:8px 14px;border-bottom:1px solid var(--line)}
+td{padding:8px 14px}
+.r{text-align:right}
+tr.chg td{background:rgba(53,132,228,.15)}
+tr.sel td{background:var(--acc)}
+.log{height:230px;border-top:1px solid var(--line);background:#1e1e1e}
+.log h3{font-size:13px;font-weight:700;padding:8px 14px;display:flex;justify-content:space-between}
+.log td{padding:3px 14px;font-family:"Noto Sans Mono",monospace;font-size:12px}
+.banner{background:#5c4a1a;color:#f8e45c;padding:6px 14px;font-size:12px}
+footer{height:28px;display:flex;gap:20px;align-items:center;padding:0 14px;color:var(--dim);font-size:12px;background:var(--head)}
+</style></head><body>
+<header><span class="btn">‹</span><span class="btn">›</span>
+<div class="path"><span>⌂ 홈</span><span>projects</span><span>filescope</span><span class="on">src</span></div>
+<div class="search">검색</div><span class="btn">≡</span></header>
+<main>
+<aside><ul><li>최근</li><li>★ 즐겨찾기</li><li>⌂ 홈</li><li class="on">filescope</li><li>notes</li><li>휴지통</li></ul><hr><ul><li>+ 다른 위치</li></ul></aside>
+<section><table>
+<thead><tr><th>이름</th><th class="r">크기</th><th>수정한 날짜</th></tr></thead>
+<tbody>
+<tr class="chg"><td>watcher.c</td><td class="r">18.4 kB</td><td>14:32</td></tr>
+<tr class="chg"><td>event_queue.h</td><td class="r">1.2 kB</td><td>14:32</td></tr>
+<tr class="sel"><td>main.c</td><td class="r">4.9 kB</td><td>14:31</td></tr>
+<tr class="chg"><td>normalizer.c</td><td class="r">7.0 kB</td><td>14:31</td></tr>
+<tr><td>dispatcher.c</td><td class="r">9.3 kB</td><td>13:58</td></tr>
+<tr><td>history_store.c</td><td class="r">12.6 kB</td><td>어제</td></tr>
+<tr><td>job_scheduler.c</td><td class="r">6.1 kB</td><td>어제</td></tr>
+<tr><td>CMakeLists.txt</td><td class="r">1.8 kB</td><td>11월 22일</td></tr>
+</tbody></table></section>
+</main>
+<div class="log"><div class="banner">이벤트 대기열이 넘쳐 src를 다시 검사했습니다 (14:29)</div>
+<h3>활동 <span style="font-weight:400;color:var(--dim)">감시 중 3 · 초당 14</span></h3><table>
+<tr><td>14:32:07</td><td>수정됨</td><td>src/watcher.c</td></tr>
+<tr><td>14:32:05</td><td>만들어짐</td><td>src/event_queue.h</td></tr>
+<tr><td>14:31:58</td><td>이동됨</td><td>notes.md → docs/notes.md</td></tr>
+<tr><td>14:31:52</td><td>권한 바뀜</td><td>src/main.c</td></tr>
+<tr><td>14:31:33</td><td>삭제됨</td><td>src/tmp_scan.o</td></tr>
+</table></div>
+<footer><span>항목 8개, "main.c" 선택함</span><span>여유 공간 41.2 GB</span></footer>
+</body></html>

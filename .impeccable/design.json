@@ -1,0 +1,726 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-11-24T02:26:48.377Z",
+  "title": "Design System: FileScope",
+  "extensions": {
+    "colorMeta": {
+      "bg": {
+        "role": "neutral",
+        "displayName": "남흑 바탕 (Ink-Navy Ground)",
+        "canonical": "oklch(19.4% 0.016 256.8)",
+        "tonalRamp": [
+          "#090b0e",
+          "#22252a",
+          "#3e4248",
+          "#5c6269",
+          "#7c838c",
+          "#a0a6ae",
+          "#c4cad1",
+          "#eaeff5"
+        ],
+        "gtk": "@fs_bg"
+      },
+      "bg-2": {
+        "role": "neutral",
+        "displayName": "패널 바탕",
+        "canonical": "oklch(21.9% 0.021 254.9)",
+        "tonalRamp": [
+          "#080b0f",
+          "#21252b",
+          "#3d434a",
+          "#5a626c",
+          "#7a838f",
+          "#9ea6b0",
+          "#c3cad3",
+          "#e9eff7"
+        ],
+        "gtk": "@fs_bg_2"
+      },
+      "raise": {
+        "role": "neutral",
+        "displayName": "떠 있는 면",
+        "canonical": "oklch(24.0% 0.023 254.2)",
+        "tonalRamp": [
+          "#080b10",
+          "#21262c",
+          "#3c434b",
+          "#5a626d",
+          "#798390",
+          "#9da6b1",
+          "#c2cad4",
+          "#e9eff8"
+        ],
+        "gtk": "@fs_raise"
+      },
+      "hover": {
+        "role": "neutral",
+        "displayName": "호버",
+        "canonical": "oklch(26.5% 0.027 253.3)",
+        "tonalRamp": [
+          "#080c10",
+          "#20262d",
+          "#3b434d",
+          "#58626f",
+          "#788492",
+          "#9ba6b3",
+          "#c1cad6",
+          "#e7eff9"
+        ],
+        "gtk": "@fs_hover"
+      },
+      "line": {
+        "role": "neutral",
+        "displayName": "괘선",
+        "canonical": "oklch(31.3% 0.032 254.3)",
+        "tonalRamp": [
+          "#070c11",
+          "#1f262e",
+          "#3a434f",
+          "#576271",
+          "#768495",
+          "#9aa6b6",
+          "#bfcad8",
+          "#e6effb"
+        ],
+        "gtk": "@fs_line"
+      },
+      "line-soft": {
+        "role": "neutral",
+        "displayName": "옅은 괘선",
+        "canonical": "oklch(25.7% 0.026 255.8)",
+        "tonalRamp": [
+          "#080b10",
+          "#20252d",
+          "#3b434c",
+          "#59626e",
+          "#788392",
+          "#9ca6b3",
+          "#c1cad6",
+          "#e8eff9"
+        ],
+        "gtk": "@fs_line_soft"
+      },
+      "line-float": {
+        "role": "neutral",
+        "displayName": "떠 있는 면 테두리",
+        "canonical": "oklch(37.9% 0.045 257.4)",
+        "tonalRamp": [
+          "#060b14",
+          "#1d2632",
+          "#374354",
+          "#536278",
+          "#72849d",
+          "#96a6be",
+          "#bccadf",
+          "#e4f0ff"
+        ],
+        "gtk": "@fs_line_float"
+      },
+      "ink": {
+        "role": "neutral",
+        "displayName": "잉크",
+        "canonical": "oklch(93.3% 0.007 260.7)",
+        "tonalRamp": [
+          "#0a0b0d",
+          "#242527",
+          "#404245",
+          "#5f6165",
+          "#808287",
+          "#a3a5a9",
+          "#c7c9cd",
+          "#edeef1"
+        ],
+        "gtk": "@fs_ink"
+      },
+      "ink-2": {
+        "role": "neutral",
+        "displayName": "보조 잉크",
+        "canonical": "oklch(80.8% 0.018 256.3)",
+        "tonalRamp": [
+          "#090b0f",
+          "#22252a",
+          "#3d4249",
+          "#5c626a",
+          "#7c838d",
+          "#9fa6af",
+          "#c4cad2",
+          "#eaeff6"
+        ],
+        "gtk": "@fs_ink_2"
+      },
+      "dim": {
+        "role": "neutral",
+        "displayName": "흐린 잉크 (보합)",
+        "canonical": "oklch(66.3% 0.025 258.4)",
+        "tonalRamp": [
+          "#080b10",
+          "#21252d",
+          "#3c424c",
+          "#5a626e",
+          "#798392",
+          "#9da6b3",
+          "#c2cad5",
+          "#e8eff9"
+        ],
+        "gtk": "@fs_dim"
+      },
+      "up": {
+        "role": "primary",
+        "displayName": "시세 빨강 (Ticker Red)",
+        "canonical": "oklch(65.6% 0.194 21.4)",
+        "tonalRamp": [
+          "#270000",
+          "#500008",
+          "#7d0c1d",
+          "#ad2733",
+          "#de424c",
+          "#fc7476",
+          "#ffa2a1",
+          "#ffd0cd"
+        ],
+        "gtk": "@fs_up"
+      },
+      "up-wash": {
+        "role": "primary",
+        "displayName": "시세 빨강 잔상 11%",
+        "canonical": "oklch(65.6% 0.194 21.4)",
+        "tonalRamp": [
+          "#270000",
+          "#500008",
+          "#7d0c1d",
+          "#ad2733",
+          "#de424c",
+          "#fc7476",
+          "#ffa2a1",
+          "#ffd0cd"
+        ],
+        "gtk": "@fs_up_wash"
+      },
+      "up-flash": {
+        "role": "primary",
+        "displayName": "시세 빨강 플래시 42%",
+        "canonical": "oklch(65.6% 0.194 21.4)",
+        "tonalRamp": [
+          "#270000",
+          "#500008",
+          "#7d0c1d",
+          "#ad2733",
+          "#de424c",
+          "#fc7476",
+          "#ffa2a1",
+          "#ffd0cd"
+        ],
+        "gtk": "@fs_up_flash"
+      },
+      "down": {
+        "role": "primary",
+        "displayName": "시세 파랑 (Ticker Blue)",
+        "canonical": "oklch(68.8% 0.167 255.8)",
+        "tonalRamp": [
+          "#00072b",
+          "#002254",
+          "#054082",
+          "#1c60b2",
+          "#3482e2",
+          "#65a7fd",
+          "#94ccff",
+          "#c3f2ff"
+        ],
+        "gtk": "@fs_down"
+      },
+      "down-wash": {
+        "role": "primary",
+        "displayName": "시세 파랑 잔상 11%",
+        "canonical": "oklch(68.8% 0.167 255.8)",
+        "tonalRamp": [
+          "#00072b",
+          "#002254",
+          "#054082",
+          "#1c60b2",
+          "#3482e2",
+          "#65a7fd",
+          "#94ccff",
+          "#c3f2ff"
+        ],
+        "gtk": "@fs_down_wash"
+      },
+      "down-flash": {
+        "role": "primary",
+        "displayName": "시세 파랑 플래시 40%",
+        "canonical": "oklch(68.8% 0.167 255.8)",
+        "tonalRamp": [
+          "#00072b",
+          "#002254",
+          "#054082",
+          "#1c60b2",
+          "#3482e2",
+          "#65a7fd",
+          "#94ccff",
+          "#c3f2ff"
+        ],
+        "gtk": "@fs_down_flash"
+      },
+      "sel": {
+        "role": "secondary",
+        "displayName": "선택 노랑 (Selection Amber)",
+        "canonical": "oklch(85.0% 0.147 88.7)",
+        "tonalRamp": [
+          "#170700",
+          "#362000",
+          "#593d00",
+          "#7f5b00",
+          "#a67b00",
+          "#c5a038",
+          "#e5c675",
+          "#ffecab"
+        ],
+        "gtk": "@fs_sel"
+      },
+      "sel-wash": {
+        "role": "secondary",
+        "displayName": "선택 바탕 10%",
+        "canonical": "oklch(85.0% 0.147 88.7)",
+        "tonalRamp": [
+          "#170700",
+          "#362000",
+          "#593d00",
+          "#7f5b00",
+          "#a67b00",
+          "#c5a038",
+          "#e5c675",
+          "#ffecab"
+        ],
+        "gtk": "@fs_sel_wash"
+      },
+      "add": {
+        "role": "tertiary",
+        "displayName": "Diff 초록 (Git Added)",
+        "canonical": "oklch(69.5% 0.181 145.6)",
+        "tonalRamp": [
+          "#001300",
+          "#003100",
+          "#005305",
+          "#00771c",
+          "#189d34",
+          "#5cbe66",
+          "#8fe094",
+          "#c1ffc3"
+        ],
+        "gtk": "@fs_add"
+      },
+      "add-wash": {
+        "role": "tertiary",
+        "displayName": "Diff 추가 바탕 14%",
+        "canonical": "oklch(69.5% 0.181 145.6)",
+        "tonalRamp": [
+          "#001300",
+          "#003100",
+          "#005305",
+          "#00771c",
+          "#189d34",
+          "#5cbe66",
+          "#8fe094",
+          "#c1ffc3"
+        ],
+        "gtk": "@fs_add_wash"
+      },
+      "add-ink": {
+        "role": "tertiary",
+        "displayName": "Diff 삽입 글자",
+        "canonical": "oklch(90.3% 0.089 149.0)",
+        "tonalRamp": [
+          "#001003",
+          "#0f2c16",
+          "#274c2e",
+          "#406e48",
+          "#5b9165",
+          "#84b38b",
+          "#add5b3",
+          "#d7f9dc"
+        ],
+        "gtk": "@fs_add_ink"
+      },
+      "del": {
+        "role": "tertiary",
+        "displayName": "Diff 빨강 (Git Removed)",
+        "canonical": "oklch(66.5% 0.205 27.0)",
+        "tonalRamp": [
+          "#280000",
+          "#520000",
+          "#80030b",
+          "#b02121",
+          "#e23d38",
+          "#ff7266",
+          "#ffa194",
+          "#ffcfc3"
+        ],
+        "gtk": "@fs_del"
+      },
+      "del-wash": {
+        "role": "tertiary",
+        "displayName": "Diff 삭제 바탕 14%",
+        "canonical": "oklch(66.5% 0.205 27.0)",
+        "tonalRamp": [
+          "#280000",
+          "#520000",
+          "#80030b",
+          "#b02121",
+          "#e23d38",
+          "#ff7266",
+          "#ffa194",
+          "#ffcfc3"
+        ],
+        "gtk": "@fs_del_wash"
+      },
+      "del-ink": {
+        "role": "tertiary",
+        "displayName": "Diff 삭제 글자",
+        "canonical": "oklch(86.8% 0.071 24.0)",
+        "tonalRamp": [
+          "#170505",
+          "#371c1b",
+          "#5b3734",
+          "#815350",
+          "#a9726e",
+          "#c99793",
+          "#e9bdb9",
+          "#ffe4e1"
+        ],
+        "gtk": "@fs_del_ink"
+      },
+      "media-well": {
+        "role": "neutral",
+        "displayName": "그림 바닥",
+        "canonical": "oklch(17.2% 0.014 258.4)",
+        "tonalRamp": [
+          "#090b0e",
+          "#222529",
+          "#3f4248",
+          "#5d6268",
+          "#7d838b",
+          "#a0a5ad",
+          "#c5c9d0",
+          "#ebeff4"
+        ],
+        "gtk": "@fs_media_well"
+      },
+      "scroll-thumb": {
+        "role": "neutral",
+        "displayName": "스크롤바",
+        "canonical": "oklch(35.6% 0.036 254.9)",
+        "tonalRamp": [
+          "#070c12",
+          "#1e2630",
+          "#384350",
+          "#556273",
+          "#748498",
+          "#98a6b9",
+          "#becadb",
+          "#e5f0fd"
+        ],
+        "gtk": "@fs_scroll_thumb"
+      }
+    },
+    "typographyMeta": {
+      "body": {
+        "displayName": "Body",
+        "purpose": "기본 글자, 트리 노드, 버튼."
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "패널 파일 이름, 빈 상태 제목."
+      },
+      "row-name": {
+        "displayName": "Row Name",
+        "purpose": "목록 파일 이름(폴더는 600)."
+      },
+      "heading": {
+        "displayName": "Heading",
+        "purpose": "구역 제목(이벤트 로그, 이번 세션)."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "열 머리글, 지표 라벨, 칩, 상태 표시줄."
+      },
+      "group-label": {
+        "displayName": "Group Label",
+        "purpose": "사이드바 묶음 이름."
+      },
+      "data": {
+        "displayName": "Data",
+        "purpose": "크기, 변동, 시각, 권한. 고정폭 숫자."
+      },
+      "data-dense": {
+        "displayName": "Data Dense",
+        "purpose": "줄 Diff, 이벤트 로그 행."
+      },
+      "event-code": {
+        "displayName": "Event Code",
+        "purpose": "목록 이벤트 열(▲ MODIFY)."
+      },
+      "figure": {
+        "displayName": "Figure",
+        "purpose": "헤더바 실시간 지표 숫자."
+      },
+      "figure-lg": {
+        "displayName": "Figure Large",
+        "purpose": "세션 집계 숫자."
+      }
+    },
+    "shadows": [
+      {
+        "name": "floating",
+        "value": "0 8px 24px rgba(0,0,0,.45)",
+        "purpose": "컨텍스트 메뉴와 토스트에만. 테두리는 line-float. 고정 면에는 그림자가 없다."
+      },
+      {
+        "name": "floating-window",
+        "value": "0 12px 32px rgba(0,0,0,.55)",
+        "purpose": "트레이 요약 창. GTK에서는 창 관리자·CSD가 그린다."
+      }
+    ],
+    "motion": [
+      {
+        "name": "ease-tick",
+        "value": "cubic-bezier(.16,1,.3,1)",
+        "purpose": "틱 플래시, 로그 새 줄, 토스트, 접기 셰브런의 강한 ease-out. GTK에서는 1 - pow(2, -10t)로 근사."
+      },
+      {
+        "name": "tick-flash",
+        "value": "600ms",
+        "purpose": "행 바탕 *-flash → *-wash 보간. 모션 감소 시 없음."
+      },
+      {
+        "name": "resting-wash-hold",
+        "value": "12s",
+        "purpose": "잔상 바탕이 남는 시간. 이후 모델 열을 지운다."
+      },
+      {
+        "name": "resting-wash-fade",
+        "value": "1.6s ease",
+        "purpose": "잔상이 걷힐 때의 페이드. 모션 감소 시 즉시."
+      },
+      {
+        "name": "log-fresh",
+        "value": "1.2s",
+        "purpose": "새 로그 줄 바탕 #243041 → 투명. 모션 감소 시 없음."
+      },
+      {
+        "name": "row-leave",
+        "value": "600ms ease, 약 30초 후",
+        "purpose": "삭제되어 남은 행이 사라짐. 모션 감소 시 즉시."
+      },
+      {
+        "name": "skeleton-shimmer",
+        "value": "1.4s linear infinite",
+        "purpose": "불러오는 중 막대. 모션 감소 시 정지."
+      },
+      {
+        "name": "toast",
+        "value": "200ms, 8px 상승, 5s 유지(트레이 요약 창은 3.2s)",
+        "purpose": "토스트 등장."
+      },
+      {
+        "name": "disclosure",
+        "value": "150ms",
+        "purpose": "접기 셰브런 90도 회전."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "wide",
+        "value": ">=1440px",
+        "note": "패널 440px"
+      },
+      {
+        "name": "laptop",
+        "value": "<=1439px",
+        "note": "패널 380px"
+      },
+      {
+        "name": "compact",
+        "value": "<=1279px",
+        "note": "사이드바 200px, 패널 320px, 검색 160px, 이벤트·권한 열과 반영 지연 지표 숨김"
+      },
+      {
+        "name": "short",
+        "value": "height <=800px",
+        "note": "로그 196px"
+      },
+      {
+        "name": "min",
+        "value": "1024px",
+        "note": "최소 창 폭"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Button",
+      "kind": "button",
+      "refersTo": "button",
+      "description": "헤더바와 패널의 기본 버튼. 테두리만 있고 바탕은 호버에서만.",
+      "html": "<button class=\"ds-btn\">전체 이력</button>",
+      "css": ".ds-btn{display:inline-flex;align-items:center;gap:6px;height:30px;min-width:30px;padding:0 8px;border:1px solid #263241;border-radius:4px;background:transparent;color:#b9c1cc;font:13px/1.45 Ubuntu,\"Noto Sans KR\",\"Noto Sans CJK KR\",Cantarell,system-ui,sans-serif;cursor:pointer}.ds-btn:hover{background:#1c2632;color:#e6e9ee}.ds-btn:focus-visible{outline:2px solid #f5c84b;outline-offset:-2px}.ds-btn:disabled{opacity:.4}"
+    },
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "확정 동작(되돌리기, 복원). 바탕 없이 밝은 테두리.",
+      "html": "<button class=\"ds-btn-primary\">v6으로 되돌리기</button>",
+      "css": ".ds-btn-primary{height:30px;padding:0 8px;border:1px solid #b9c1cc;border-radius:4px;background:transparent;color:#e6e9ee;font:13px/1.45 Ubuntu,\"Noto Sans KR\",\"Noto Sans CJK KR\",Cantarell,system-ui,sans-serif;cursor:pointer}.ds-btn-primary:hover{background:#1c2632}.ds-btn-primary:focus-visible{outline:2px solid #f5c84b;outline-offset:-2px}"
+    },
+    {
+      "name": "Search Field",
+      "kind": "input",
+      "refersTo": "search-field",
+      "description": "폴더 검색과 로그 거르기. 포커스 시 노랑 테두리.",
+      "html": "<label class=\"ds-search\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 16 16\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\"><circle cx=\"7\" cy=\"7\" r=\"4.5\"/><path d=\"m10.5 10.5 3.5 3.5\"/></svg><input placeholder=\"이 폴더에서 검색\"></label>",
+      "css": ".ds-search{display:flex;align-items:center;gap:6px;height:30px;width:220px;padding:0 8px;border:1px solid #263241;border-radius:4px;color:#8a94a3;background:#18202a}.ds-search input{border:0;background:none;outline:0;width:100%;color:#e6e9ee;font:13px Ubuntu,\"Noto Sans KR\",\"Noto Sans CJK KR\",Cantarell,system-ui,sans-serif}.ds-search:focus-within{border-color:#f5c84b}"
+    },
+    {
+      "name": "Tabs",
+      "kind": "nav",
+      "refersTo": "tab-selected",
+      "description": "열린 위치 탭. 선택 탭은 노랑 2px 밑줄.",
+      "html": "<div class=\"ds-tabs\"><button class=\"ds-tab on\">filescope</button><button class=\"ds-tab\">src</button><button class=\"ds-tab\">Downloads</button></div>",
+      "css": ".ds-tabs{display:flex;height:34px;background:#10151c;border-bottom:1px solid #263241}.ds-tab{padding:0 14px;border:0;border-right:1px solid #1b2430;background:none;color:#8a94a3;font:13px Ubuntu,\"Noto Sans KR\",\"Noto Sans CJK KR\",Cantarell,system-ui,sans-serif;cursor:pointer}.ds-tab:hover{color:#e6e9ee}.ds-tab.on{color:#e6e9ee;box-shadow:inset 0 -2px 0 #f5c84b}.ds-tab:focus-visible{outline:2px solid #f5c84b;outline-offset:-2px}"
+    },
+    {
+      "name": "Filter Chip",
+      "kind": "chip",
+      "refersTo": "chip",
+      "description": "이벤트 로그 거르기. 한 번에 하나만 눌림.",
+      "html": "<button class=\"ds-chip on\">전체</button> <button class=\"ds-chip\">생성·삭제</button> <button class=\"ds-chip\">수정</button>",
+      "css": ".ds-chip{height:24px;padding:0 10px;border:1px solid #263241;border-radius:12px;background:none;color:#8a94a3;font:12px Ubuntu,\"Noto Sans KR\",\"Noto Sans CJK KR\",Cantarell,system-ui,sans-serif;cursor:pointer}.ds-chip:hover{color:#e6e9ee}.ds-chip.on{color:#e6e9ee;border-color:#b9c1cc}.ds-chip:focus-visible{outline:2px solid #f5c84b;outline-offset:-2px}"
+    },
+    {
+      "name": "File Rows (tick)",
+      "kind": "custom",
+      "refersTo": "file-row",
+      "description": "시그니처 목록 행: 틱(증가), 잔상(감소), 선택, 삭제되어 남은 행, 보합.",
+      "html": "<table class=\"ds-files\"><tr class=\"tick\"><td>build.log</td><td class=\"r\">48.2 KB</td><td class=\"r up\">▲ +1.2 KB</td><td class=\"ev up\">▲ MODIFY</td></tr><tr class=\"down-w\"><td>중간발표.docx</td><td class=\"r\">2.4 MB</td><td class=\"r down\">▼ −41.0 KB</td><td class=\"ev down\">▼ MODIFY</td></tr><tr class=\"sel\"><td>README.md</td><td class=\"r\">6.2 KB</td><td class=\"r up\">▲ +240 B</td><td class=\"ev up\">▲ MODIFY</td></tr><tr class=\"gone\"><td><s>tmp_scan.o</s></td><td class=\"r\"><s>22.0 KB</s></td><td class=\"r down\">✕ 삭제</td><td class=\"ev down\">✕ DELETE</td></tr><tr><td>.gitignore</td><td class=\"r\">214 B</td><td class=\"r flat\">—</td><td class=\"ev flat\">—</td></tr></table>",
+      "css": ".ds-files{border-collapse:collapse;width:100%;background:#10151c;color:#e6e9ee;font:500 14px Ubuntu,\"Noto Sans KR\",\"Noto Sans CJK KR\",Cantarell,system-ui,sans-serif}.ds-files td{height:34px;padding:0 12px;border-bottom:1px solid #1b2430;white-space:nowrap}.ds-files td.r{font:13px \"Ubuntu Mono\",\"Noto Sans Mono\",\"DejaVu Sans Mono\",ui-monospace,monospace;text-align:right}.ds-files td.ev{font:12px \"Ubuntu Mono\",\"Noto Sans Mono\",\"DejaVu Sans Mono\",ui-monospace,monospace;letter-spacing:.02em}.ds-files td.r.up,.ds-files td.r.down{font-weight:600}.ds-files .up{color:#f0525a}.ds-files .down{color:#4d9bff}.ds-files .flat{color:#8a94a3}.ds-files tr:hover td{background:#1c2632}.ds-files tr.tick td{background:rgba(240,82,90,.11);animation:ds-tick 2.4s cubic-bezier(.16,1,.3,1) infinite}@keyframes ds-tick{0%{background:rgba(240,82,90,.42)}25%,100%{background:rgba(240,82,90,.11)}}.ds-files tr.down-w td{background:rgba(77,155,255,.11)}.ds-files tr.sel td{background:rgba(245,200,75,.10);box-shadow:inset 0 1px 0 #f5c84b,inset 0 -1px 0 #f5c84b}.ds-files tr.gone td{color:#8a94a3}.ds-files tr.gone s{text-decoration-color:#4d9bff}@media (prefers-reduced-motion:reduce){.ds-files tr.tick td{animation:none}}"
+    },
+    {
+      "name": "Alert Band",
+      "kind": "custom",
+      "refersTo": "band-alert",
+      "description": "활성 오류·경고: 반전 띠 + 경고 아이콘. 빨강을 쓰지 않는다.",
+      "html": "<div class=\"ds-band\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 16 16\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M8 1.8 15 14H1zM8 6v3.5M8 11.6v.1\"/></svg><span>filescope를 읽을 권한이 없습니다.</span><button>권한 보기</button></div>",
+      "css": ".ds-band{display:flex;align-items:center;gap:10px;padding:8px 12px;background:#e6e9ee;color:#10151c;font:500 13px Ubuntu,\"Noto Sans KR\",\"Noto Sans CJK KR\",Cantarell,system-ui,sans-serif}.ds-band button{margin-left:auto;height:26px;padding:0 8px;border:1px solid #10151c;border-radius:4px;background:transparent;color:#10151c;font:inherit;cursor:pointer}.ds-band button:hover{background:rgba(16,21,28,.1)}.ds-band button:focus-visible{outline:2px solid #f5c84b;outline-offset:-2px}"
+    },
+    {
+      "name": "Quiet Band",
+      "kind": "custom",
+      "refersTo": "band-quiet",
+      "description": "해결된 알림(다시 검사한 overflow)과 안내.",
+      "html": "<div class=\"ds-qband\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 16 16\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M8 1.8 15 14H1zM8 6v3.5M8 11.6v.1\"/></svg><span><b>14:29:11</b> 이벤트 대기열이 넘쳤습니다. 다시 검사해 맞췄습니다.</span><button>확인</button></div>",
+      "css": ".ds-qband{display:flex;align-items:center;gap:10px;padding:4px 8px 4px 12px;background:#18202a;color:#e6e9ee;border-bottom:1px solid #263241;font:500 12px Ubuntu,\"Noto Sans KR\",\"Noto Sans CJK KR\",Cantarell,system-ui,sans-serif}.ds-qband b{font:400 13px \"Ubuntu Mono\",\"Noto Sans Mono\",\"DejaVu Sans Mono\",ui-monospace,monospace}.ds-qband button{margin-left:auto;height:26px;padding:0 8px;border:1px solid #263241;border-radius:4px;background:none;color:#e6e9ee;font:inherit;cursor:pointer}.ds-qband button:hover{background:#1c2632}.ds-qband button:focus-visible{outline:2px solid #f5c84b;outline-offset:-2px}"
+    },
+    {
+      "name": "Line Diff",
+      "kind": "custom",
+      "refersTo": "diff-block",
+      "description": "텍스트 변경: 통합 줄 Diff, git 관례 색과 + / − 기호.",
+      "html": "<div class=\"ds-diff\"><span class=\"h\">@@ -1,8 +1,10 @@</span><div><i>2</i><i>2</i><b></b><span> </span></div><div class=\"d\"><i>3</i><i></i><b>−</b><span>project(linux_file_explorer LANGUAGES CXX)</span></div><div class=\"a\"><i></i><i>3</i><b>+</b><span>project(filescope LANGUAGES C)</span></div></div>",
+      "css": ".ds-diff{background:#141b24;color:#e6e9ee;font:12.5px/1.6 \"Ubuntu Mono\",\"Noto Sans Mono\",\"DejaVu Sans Mono\",ui-monospace,monospace;border:1px solid #263241;border-radius:4px;overflow:hidden}.ds-diff div{display:grid;grid-template-columns:34px 34px 16px 1fr;white-space:pre}.ds-diff i{font-style:normal;color:#8a94a3;text-align:right;padding-right:6px}.ds-diff b{font-weight:400}.ds-diff .h{display:block;color:#8a94a3;background:#18202a;padding:2px 8px}.ds-diff .a{background:rgba(63,185,80,.14)}.ds-diff .a b{color:#3fb950}.ds-diff .d{background:rgba(248,81,73,.14)}.ds-diff .d b{color:#f85149}"
+    },
+    {
+      "name": "Event Log Rows",
+      "kind": "custom",
+      "refersTo": "event-row",
+      "description": "체결식 로그. 시각·이벤트·경로·값 모두 고정폭, 새 줄은 잠깐 밝아진다.",
+      "html": "<table class=\"ds-log\"><tr class=\"fresh\"><td class=\"t\">14:32:07.418</td><td class=\"e up\">▲ MODIFY</td><td>build.log</td><td class=\"x up\">+1.2 KB</td></tr><tr><td class=\"t\">14:31:42.090</td><td class=\"e flat\">→ MOVE</td><td>notes.md → docs/notes.md</td><td class=\"x\">cookie 2291</td></tr></table>",
+      "css": ".ds-log{border-collapse:collapse;width:100%;background:#141b24;color:#e6e9ee;font:12.5px \"Ubuntu Mono\",\"Noto Sans Mono\",\"DejaVu Sans Mono\",ui-monospace,monospace}.ds-log td{height:24px;padding:0 12px;white-space:nowrap}.ds-log .t{color:#8a94a3}.ds-log .e{font-weight:600}.ds-log .x{text-align:right;color:#b9c1cc}.ds-log .up{color:#f0525a}.ds-log .flat{color:#8a94a3}.ds-log tr:hover td{background:#1c2632}.ds-log tr.fresh td{animation:ds-fresh 2.4s cubic-bezier(.16,1,.3,1) infinite}@keyframes ds-fresh{0%{background:#243041}50%,100%{background:transparent}}@media (prefers-reduced-motion:reduce){.ds-log tr.fresh td{animation:none}}"
+    },
+    {
+      "name": "Toast",
+      "kind": "custom",
+      "refersTo": "toast",
+      "description": "작업 확인 알림. 조용한 스타일, 반전 스타일은 쓰지 않는다.",
+      "html": "<div class=\"ds-toast\"><span>README.md를 휴지통으로 옮겼습니다</span><button>실행 취소</button></div>",
+      "css": ".ds-toast{display:inline-flex;align-items:center;gap:14px;padding:8px 8px 8px 14px;background:#18202a;color:#e6e9ee;border:1px solid #33435a;border-radius:6px;box-shadow:0 8px 24px rgba(0,0,0,.45);font:13px Ubuntu,\"Noto Sans KR\",\"Noto Sans CJK KR\",Cantarell,system-ui,sans-serif}.ds-toast button{height:26px;padding:0 8px;border:1px solid #263241;border-radius:4px;background:none;color:#b9c1cc;font:inherit;cursor:pointer}.ds-toast button:hover{background:#1c2632;color:#e6e9ee}.ds-toast button:focus-visible{outline:2px solid #f5c84b;outline-offset:-2px}"
+    },
+    {
+      "name": "Tray Summary Window",
+      "kind": "custom",
+      "refersTo": "summary-window",
+      "description": "트레이 요약 창: 상태, 집계 4칸(0건은 dim), 최근 변경 44px 행, 하단 버튼.",
+      "html": "<section class=\"ds-sum\"><header>FileScope 요약<button aria-label=\"닫기\">✕</button></header><div class=\"st\"><span class=\"dot\"></span>감시 중<span class=\"rate\">최근 1분<b>9</b>건</span></div><div class=\"tl\"><div><span>생성</span><b class=\"up\">●12</b></div><div><span>수정</span><b class=\"up\">▲48</b></div><div><span>삭제</span><b class=\"down\">✕5</b></div><div><span>이동</span><b class=\"z\">→0</b></div></div><ul><li class=\"tick\"><span class=\"e up\">▲ 수정</span><span class=\"n\">build.log<small>~/projects/filescope</small></span><span class=\"d up\">+1.2 KB</span><span class=\"t\">14:32:07</span></li><li><span class=\"e down\">✕ 삭제</span><span class=\"n\"><s>tmp_scan.o</s><small>~/projects/filescope</small></span><span class=\"d down\">22.0 KB</span><span class=\"t\">14:31:44</span></li></ul><footer><button>폴더 변경</button><button>일시 정지</button><button class=\"p\">메인 창</button></footer></section>",
+      "css": ".ds-sum{width:360px;background:#10151c;color:#e6e9ee;border:1px solid #33435a;border-radius:6px;overflow:hidden;font:13px/1.45 Ubuntu,\"Noto Sans KR\",\"Noto Sans CJK KR\",Cantarell,system-ui,sans-serif}.ds-sum header{display:flex;align-items:center;height:40px;padding:0 6px 0 14px;background:#18202a;border-bottom:1px solid #263241;font-weight:600}.ds-sum header button{margin-left:auto;width:28px;height:28px;border:0;border-radius:4px;background:none;color:#8a94a3;cursor:pointer}.ds-sum header button:hover{background:#1c2632;color:#e6e9ee}.ds-sum .st{display:flex;align-items:center;gap:8px;padding:16px 16px 12px;font-size:16px;font-weight:600}.ds-sum .dot{width:9px;height:9px;border-radius:50%;background:#e6e9ee}.ds-sum .rate{margin-left:auto;font-size:12px;font-weight:400;color:#8a94a3}.ds-sum .rate b{font:600 14px \"Ubuntu Mono\",\"Noto Sans Mono\",\"DejaVu Sans Mono\",ui-monospace,monospace;color:#e6e9ee;margin-left:4px}.ds-sum .tl{display:grid;grid-template-columns:repeat(4,1fr);padding:12px 16px;border-top:1px solid #1b2430;border-bottom:1px solid #263241}.ds-sum .tl span{display:block;font-size:11px;color:#8a94a3}.ds-sum .tl b{font:600 17px \"Ubuntu Mono\",\"Noto Sans Mono\",\"DejaVu Sans Mono\",ui-monospace,monospace}.ds-sum ul{list-style:none;margin:8px 0 0;padding:0}.ds-sum li{display:grid;grid-template-columns:64px minmax(0,1fr) auto 64px;align-items:center;gap:8px;height:44px;padding:0 16px;border-top:1px solid #1b2430;cursor:pointer}.ds-sum li:hover{background:#1c2632}.ds-sum .e,.ds-sum .d,.ds-sum .t{font:600 12px \"Ubuntu Mono\",\"Noto Sans Mono\",\"DejaVu Sans Mono\",ui-monospace,monospace}.ds-sum .t{font-weight:400;color:#8a94a3;text-align:right}.ds-sum .d{text-align:right}.ds-sum .n{font-size:14px;font-weight:500;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}.ds-sum .n small{display:block;font:11px \"Ubuntu Mono\",\"Noto Sans Mono\",\"DejaVu Sans Mono\",ui-monospace,monospace;color:#8a94a3}.ds-sum s{text-decoration-color:#4d9bff;color:#8a94a3}.ds-sum .up{color:#f0525a}.ds-sum .down{color:#4d9bff}.ds-sum .z{color:#8a94a3}.ds-sum li.tick{background:rgba(240,82,90,.11);animation:ds-sum-tick 2.4s cubic-bezier(.16,1,.3,1) infinite}@keyframes ds-sum-tick{0%{background:rgba(240,82,90,.42)}25%,100%{background:rgba(240,82,90,.11)}}.ds-sum footer{display:flex;gap:6px;padding:14px 16px 16px;border-top:1px solid #1b2430}.ds-sum footer button{height:32px;padding:0 12px;border:1px solid #263241;border-radius:4px;background:none;color:#b9c1cc;font:inherit;cursor:pointer;white-space:nowrap}.ds-sum footer button:hover{background:#1c2632;color:#e6e9ee}.ds-sum footer .p{margin-left:auto;border-color:#b9c1cc;color:#e6e9ee}.ds-sum button:focus-visible,.ds-sum li:focus-visible{outline:2px solid #f5c84b;outline-offset:-2px}@media (prefers-reduced-motion:reduce){.ds-sum li.tick{animation:none}}"
+    }
+  ],
+  "narrative": {
+    "northStar": "시세 전광판 (The Quote Board)",
+    "overview": "FileScope는 파일 변경을 증권 시세 틱처럼 다룬다. 남흑색 바탕 위에서 외부 프로그램이 파일을 바꾸면 그 행이 한 번 번쩍이고, 변동 열에 부호 붙은 증감이 남고, 같은 줄이 하단 체결 로그 맨 위에 쌓인다. 화면은 회색 사이드바에 목록을 얹은 일반 파일 관리자가 아니라, 숫자가 고정폭으로 줄 맞춰 흐르는 전광판이다.\n\n밀도는 높고 장식은 없다. 위계는 상자가 아니라 글자 크기와 굵기의 대비로 만든다. 구획은 1px 괘선뿐이고 카드는 쓰지 않는다. 색은 의미가 정해진 몇 가지만 쓴다. 빨강은 생성·증가, 파랑은 삭제·감소, 회색은 보합, 노랑은 선택과 포커스다. 모든 이벤트에는 색과 별개로 읽히는 기호(▲ ▼ ● ✕ → ◦)가 붙는다. 이 기호는 아이콘이 아니라 표기법이다.\n\n데모는 1366px 노트북과 프로젝터 양쪽에서 견뎌야 한다. 다크가 P0이고, 라이트 테마(P1)는 아직 정하지 않았다(아래 Colors의 미결 항목 참고).",
+    "keyCharacteristics": [
+      "남흑색 단일 바탕, 표면 차이는 명도 몇 단계로만 낸다.",
+      "빨강=생성·증가, 파랑=삭제·감소, 회색=보합, 노랑=선택·포커스 전용.",
+      "모든 이벤트에 색 외 기호를 단다: ▲ 증가, ▼ 감소, ● 생성, ✕ 삭제, → 이동, ◦ 속성.",
+      "1px 괘선, 카드 없음, 크기·굵기 대비로 위계를 만든다.",
+      "데이터와 측정값에만 고정폭 숫자.",
+      "시그니처: 외부 이벤트 → 행 틱 플래시 → 변동 열 유지 → 로그 맨 위 추가."
+    ],
+    "rules": [
+      {
+        "name": "The Fixed Meaning Rule",
+        "body": "빨강은 생성·증가, 파랑은 삭제·감소만 뜻한다. 오류와 위험에는 절대 빨강을 쓰지 않는다. 오류·경고는 반전 띠와 경고 아이콘으로 알린다.",
+        "section": "colors"
+      },
+      {
+        "name": "The Yellow Is Attention Rule",
+        "body": "노랑은 \"지금 내가 보고 있는 것\"(선택, 포커스)에만 쓴다. 상태, 경고, 강조 장식에 노랑을 쓰지 않는다.",
+        "section": "colors"
+      },
+      {
+        "name": "The Two Dialects Rule",
+        "body": "메인 창의 변동은 시세 관례(빨강▲/파랑▼), 변경 내용 패널의 Diff는 git 관례(초록+/빨강−)를 따른다(결정 B). 두 방언은 각자 영역에서만 쓰고 섞지 않는다. 두 방언 모두 기호를 함께 단다. 시세 기호(▲ ▼ ● ✕)는 Diff 영역에 쓰지 않는다. 복합 문서 항목 태그도 Diff 체계(`+ 추가`, `± 교체`)를 따른다.",
+        "section": "colors"
+      },
+      {
+        "name": "The Glyph Always Rule",
+        "body": "색이 붙는 모든 이벤트와 Diff 줄에는 기호가 함께 간다. 색을 빼도 뜻이 읽혀야 한다.",
+        "section": "colors"
+      },
+      {
+        "name": "The Mono Is For Numbers Rule",
+        "body": "고정폭은 데이터와 측정값(크기, 시각, 권한, 해시, 경로, Diff 본문, 지표)에만 쓴다. 제목·버튼·안내 문장은 산세리프다.",
+        "section": "typography"
+      },
+      {
+        "name": "The Contrast Not Boxes Rule",
+        "body": "위계는 16/14/13/12/11px와 400/500/600 굵기 대비로 만든다. 묶음을 강조하려고 상자나 바탕을 추가하지 않는다.",
+        "section": "typography"
+      },
+      {
+        "name": "The Flat Board Rule",
+        "body": "고정된 면(헤더, 목록, 패널, 로그)에는 그림자가 없다. 구획은 1px 괘선이고, 표면 차이는 명도 한 단계다.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "**Do** 빨강(`up`)은 생성·증가, 파랑(`down`)은 삭제·감소에만 쓰고, 항상 ▲ ▼ ● ✕ 기호를 함께 단다.",
+      "**Do** 보합(이동, 속성, 변화 없음)은 `dim`과 → ◦ — 기호로 표시한다.",
+      "**Do** 선택은 `sel-wash` 바탕과 위아래 1px `sel` 괘선으로, 포커스는 2px `sel` 링으로 표시한다.",
+      "**Do** 활성 오류·경고는 반전 띠(`ink` 바탕, `bg` 글자) + 경고 아이콘으로, 해결된 알림은 조용한 띠(`raise`)로 알린다.",
+      "**Do** Diff와 버전 비교에서는 git 관례(초록 +, 빨강 −)를 따르고 기호를 글자로 넣는다.",
+      "**Do** 크기, 시각, 권한, 해시, 지표 숫자는 Ubuntu Mono 고정폭으로 쓴다.",
+      "**Do** 음수에는 U+2212(−)를 쓴다.",
+      "**Do** 모션 감소 설정에서는 플래시를 빼고 잔상 바탕만 남긴다."
+    ],
+    "donts": [
+      "**Don't** 오류, 경고, 위험 작업(영구 삭제 등)에 빨강을 쓰지 않는다.",
+      "**Don't** 반전 스타일(`ink` 바탕)을 토스트, 일시 정지 안내, 해결된 알림에 쓰지 않는다. 진행 중인 오류·경고 전용이다.",
+      "**Don't** 감시 상태 표시에 시세 색을 쓰지 않는다. 감시 중은 `ink` 흰 점, 트레이 아이콘은 단색 모양으로 구분한다.",
+      "**Don't** 노랑을 선택·포커스 밖에서 쓰지 않는다.",
+      "**Don't** 선택 행에 옆 줄무늬(side stripe)를 넣지 않는다.",
+      "**Don't** 카드나 상자로 묶지 않는다. 구획은 1px 괘선, 위계는 글자 크기·굵기다.",
+      "**Don't** 고정 면(헤더, 목록, 패널, 로그)에 그림자를 넣지 않는다.",
+      "**Don't** 이벤트 기호(▲ ▼ ● ✕ → ◦)를 아이콘처럼 키우거나 장식으로 쓰지 않는다. 글자와 같은 크기의 표기법이다.",
+      "**Don't** 메인 창 변동에 git 초록을, Diff에 시세 파랑을 섞지 않는다.",
+      "**Don't** 문장과 라벨을 고정폭으로 쓰지 않는다."
+    ]
+  }
+}

@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><title>FileScope — 청사진 도면</title>
+<style>
+:root{--bg:#0f2a44;--panel:#163a5c;--line:#3d6487;--ink:#dbe7f3;--dim:#8fb0cf;--rev:#f2b134;--acc:#7fb2e5}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:1440px;height:900px;overflow:hidden;background:var(--bg);color:var(--ink);font:13px/1.4 "Noto Sans KR","Cantarell",system-ui,sans-serif}
+body{background-image:linear-gradient(rgba(219,231,243,.05) 1px,transparent 1px),linear-gradient(90deg,rgba(219,231,243,.05) 1px,transparent 1px);background-size:24px 24px}
+.num{font-family:"Noto Sans Mono","DejaVu Sans Mono",monospace;font-variant-numeric:tabular-nums}
+header{height:48px;display:flex;align-items:center;gap:12px;padding:0 16px;border-bottom:1px solid var(--line);background:var(--panel)}
+.nav button{background:none;border:1px solid var(--line);color:var(--ink);width:30px;height:28px}
+.crumb{font-size:14px;letter-spacing:.02em}.crumb span{color:var(--dim)}
+.tabs{display:flex;height:34px;border-bottom:1px solid var(--line)}
+.tab{padding:8px 16px;color:var(--dim);border-right:1px solid var(--line)}.tab.on{color:var(--ink);background:var(--panel)}
+.frame{position:absolute;top:82px;left:0;right:0;bottom:28px;display:grid;grid-template-columns:232px 1fr 300px;grid-template-rows:1fr 220px}
+aside{grid-row:1/3;border-right:1px solid var(--line);padding:12px 0}
+aside h4{font-size:11px;color:var(--dim);padding:6px 16px;letter-spacing:.1em}
+aside li{list-style:none;padding:4px 16px}
+aside li.on{background:rgba(127,178,229,.18);box-shadow:inset 2px 0 0 var(--acc)}
+.sheet{padding:0;border-right:1px solid var(--line)}
+table{width:100%;border-collapse:collapse}
+th{font-size:11px;font-weight:500;color:var(--dim);text-align:left;padding:8px 12px;border-bottom:1px solid var(--line);letter-spacing:.06em}
+td{padding:7px 12px;border-bottom:1px solid rgba(61,100,135,.45)}
+.r{text-align:right}
+.tri{display:inline-block;color:var(--rev);font-size:11px;border:1px solid var(--rev);padding:0 4px;margin-left:8px}
+tr.cloud td{background:rgba(242,177,52,.12)}
+tr.gone td{color:var(--dim);text-decoration:line-through}
+.title{border-left:0;display:grid;grid-template-rows:auto 1fr}
+.tb{border:1px solid var(--ink);margin:12px;display:grid;grid-template-columns:1fr 1fr}
+.tb div{border:1px solid var(--line);padding:6px 8px}
+.tb small{display:block;color:var(--dim);font-size:10px;letter-spacing:.1em}
+.tb b{font-size:16px}
+.revs{grid-column:2/4;border-top:1px solid var(--ink)}
+.revs h3{font-size:12px;letter-spacing:.12em;padding:8px 16px;border-bottom:1px solid var(--line)}
+.revs td{padding:4px 16px}
+.warn{margin:0 12px;border:1px dashed var(--rev);color:var(--rev);padding:8px;font-size:12px}
+footer{position:absolute;bottom:0;left:0;right:0;height:28px;display:flex;gap:20px;align-items:center;padding:0 16px;border-top:1px solid var(--line);color:var(--dim);font-size:12px;background:var(--panel)}
+</style></head><body>
+<header><div class="nav"><button>‹</button> <button>›</button> <button>↑</button></div>
+<div class="crumb"><span>~ / projects /</span> filescope <span>/</span> src</div>
+<span style="margin-left:auto;color:var(--dim)">감시 3 경로 · 초당 14 이벤트</span></header>
+<div class="tabs"><div class="tab on">src</div><div class="tab">docs</div><div class="tab">~/Downloads</div><div class="tab">+</div></div>
+<div class="frame">
+<aside><h4>즐겨찾기</h4><ul><li>홈</li><li class="on">filescope</li><li>notes</li></ul>
+<h4>트리</h4><ul><li>▾ filescope</li><li>&nbsp;&nbsp;▸ build</li><li>&nbsp;&nbsp;▸ docs</li><li class="on">&nbsp;&nbsp;▾ src △4</li><li>&nbsp;&nbsp;&nbsp;&nbsp;▸ ui</li><li>&nbsp;&nbsp;▸ tests</li><li>휴지통</li></ul></aside>
+<div class="sheet"><table>
+<thead><tr><th>이름</th><th class="r">크기</th><th>개정</th><th>수정 시각</th><th>권한</th></tr></thead>
+<tbody class="num">
+<tr class="cloud"><td>watcher.c<span class="tri">△7</span></td><td class="r">18.4 KB</td><td>MODIFY +312 B</td><td>14:32:07</td><td>rw-r--r--</td></tr>
+<tr class="cloud"><td>event_queue.h<span class="tri">△1</span></td><td class="r">1.2 KB</td><td>CREATE</td><td>14:32:05</td><td>rw-r--r--</td></tr>
+<tr><td>main.c<span class="tri">△3</span></td><td class="r">4.9 KB</td><td>ATTRIB 644→755</td><td>14:31:52</td><td>rwxr-xr-x</td></tr>
+<tr class="cloud"><td>normalizer.c<span class="tri">△5</span></td><td class="r">7.0 KB</td><td>MODIFY −1.1 KB</td><td>14:31:40</td><td>rw-r--r--</td></tr>
+<tr class="gone"><td>tmp_scan.o</td><td class="r">22.0 KB</td><td>DELETE</td><td>14:31:33</td><td>rw-r--r--</td></tr>
+<tr><td>dispatcher.c</td><td class="r">9.3 KB</td><td>—</td><td>13:58:11</td><td>rw-r--r--</td></tr>
+<tr><td>history_store.c</td><td class="r">12.6 KB</td><td>—</td><td>어제 22:14</td><td>rw-r--r--</td></tr>
+<tr><td>job_scheduler.c</td><td class="r">6.1 KB</td><td>—</td><td>어제 21:40</td><td>rw-r--r--</td></tr>
+</tbody></table></div>
+<div class="title">
+<div class="tb num"><div><small>감시 대상</small><b>src</b></div><div><small>상태</small><b>감시 중</b></div><div><small>세션 개정</small><b>△68</b></div><div><small>지연 P95</small><b>38ms</b></div><div><small>생성</small><b>12</b></div><div><small>삭제</small><b>5</b></div></div>
+<div class="warn">14:29:11 OVERFLOW 1회 · src 재검증 완료</div>
+</div>
+<div class="revs"><h3>개정 이력</h3><table class="num">
+<tr><td>△68</td><td>14:32:07.412</td><td>MODIFY</td><td>src/watcher.c</td><td class="r">+312 B</td></tr>
+<tr><td>△67</td><td>14:32:05.088</td><td>CREATE</td><td>src/event_queue.h</td><td class="r">1.2 KB</td></tr>
+<tr><td>△66</td><td>14:31:58.730</td><td>MOVE</td><td>notes.md → docs/notes.md</td><td class="r">cookie 2291</td></tr>
+<tr><td>△65</td><td>14:31:52.204</td><td>ATTRIB</td><td>src/main.c</td><td class="r">644 → 755</td></tr>
+<tr><td>△64</td><td>14:31:40.517</td><td>MODIFY</td><td>src/normalizer.c</td><td class="r">−1.1 KB</td></tr>
+</table></div>
+</div>
+<footer><span>8개 항목 · 1개 선택</span><span>디스크 여유 41.2 GB</span><span>inotify watch 214 / 8192</span></footer>
+</body></html>

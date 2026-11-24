@@ -1,0 +1,685 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FileScope 메인 창</title>
+<!--
+  FileScope 메인 창 디자인 시안 (GTK3 구현 기준).
+  상태 미리보기: ?state=empty | loading | error | unwatched | gone   ·   ?static=1 로 시뮬레이터 정지
+  단축키(시안 전용): Shift+E 로 외부 변경 1건 즉시 발생
+-->
+<style>
+:root{
+  --bg:#10151c; --bg-2:#141b24; --raise:#18202a; --hover:#1c2632; --line:#263241; --line-soft:#1b2430;
+  --ink:#e6e9ee; --ink-2:#b9c1cc; --dim:#8a94a3;
+  --up:#f0525a; --up-wash:rgba(240,82,90,.11); --up-flash:rgba(240,82,90,.42);
+  --down:#4d9bff; --down-wash:rgba(77,155,255,.11); --down-flash:rgba(77,155,255,.40);
+  --sel:#f5c84b; --sel-wash:rgba(245,200,75,.10); --line-float:#33435a;
+  --add:#3fb950; --add-wash:rgba(63,185,80,.14); --del:#f85149; --del-wash:rgba(248,81,73,.14);
+  --sans:"Ubuntu","Noto Sans KR","Noto Sans CJK KR","Cantarell",system-ui,sans-serif;
+  --mono:"Ubuntu Mono","Noto Sans Mono","DejaVu Sans Mono",ui-monospace,monospace;
+  --ease:cubic-bezier(.16,1,.3,1);
+  --sidebar:240px; --insp:440px; --log:232px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;background:var(--bg);color:var(--ink);font:13px/1.45 var(--sans);caret-color:var(--sel)}
+::selection{background:var(--sel);color:var(--bg)}
+*{scrollbar-width:thin;scrollbar-color:#2f3d4f transparent}
+::-webkit-scrollbar{width:10px;height:10px}::-webkit-scrollbar-thumb{background:#2f3d4f;border:3px solid var(--bg);border-radius:6px}
+button,input{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--sel);outline-offset:-2px}
+.num{font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:13px}
+.ico{width:16px;height:16px;flex:none;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+.up{color:var(--up)}.down{color:var(--down)}.flat{color:var(--dim)}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+
+.app{display:grid;height:100vh;min-width:1024px;grid-template-rows:48px 34px minmax(0,1fr) var(--log) 28px}
+
+/* 헤더바 */
+.hb{display:flex;align-items:center;gap:12px;padding:0 12px;background:var(--raise);border-bottom:1px solid var(--line)}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:30px;min-width:30px;padding:0 8px;border:1px solid var(--line);border-radius:4px;background:transparent;cursor:pointer;color:var(--ink-2)}
+.btn:hover{background:var(--hover);color:var(--ink)}
+.btn:disabled{opacity:.4;cursor:default;background:transparent}
+.btn[aria-pressed="true"]{color:var(--ink);border-color:#3a4a5e;background:var(--hover)}
+.btn.primary{border-color:var(--ink-2);color:var(--ink)}
+.grp{display:flex;gap:4px}
+.crumb{display:flex;align-items:center;min-width:0;overflow:hidden}
+.crumb button{border:0;background:none;padding:4px 6px;border-radius:4px;color:var(--dim);cursor:pointer;white-space:nowrap}
+.crumb button:hover{color:var(--ink);background:var(--hover)}
+.crumb button[aria-current]{color:var(--ink);font-weight:600;font-size:14px}
+.crumb .ico{width:12px;height:12px;color:#3d4c5f}
+.search{display:flex;align-items:center;gap:6px;height:30px;padding:0 8px;border:1px solid var(--line);border-radius:4px;width:220px;color:var(--dim)}
+.search input{border:0;background:none;outline:0;width:100%;color:var(--ink)}
+.search:focus-within{border-color:var(--sel)}
+.metrics{margin-left:auto;display:flex;align-items:baseline;gap:18px;white-space:nowrap;color:var(--dim);font-size:12px}
+.metrics b{font-family:var(--mono);font-size:17px;font-weight:600;color:var(--ink);margin-left:4px;font-variant-numeric:tabular-nums}
+
+/* 탭 */
+.tabs{display:flex;align-items:stretch;border-bottom:1px solid var(--line);background:var(--bg)}
+.tab{display:flex;align-items:center;gap:8px;padding:0 10px 0 14px;border:0;border-right:1px solid var(--line-soft);background:none;color:var(--dim);cursor:pointer;max-width:220px}
+.tab[aria-selected="true"]{color:var(--ink);box-shadow:inset 0 -2px 0 var(--sel)}
+.tab .x{display:inline-flex;padding:2px;border-radius:3px;color:var(--dim)}.tab .x:hover{color:var(--ink);background:var(--hover)}
+.tab .x .ico{width:12px;height:12px}
+.tab-add{border:0;background:none;color:var(--dim);padding:0 12px;cursor:pointer}.tab-add:hover{color:var(--ink)}
+
+/* 작업 영역 */
+.work{display:grid;grid-template-columns:var(--sidebar) minmax(0,1fr) var(--insp);min-height:0}
+.app.no-insp .work{grid-template-columns:var(--sidebar) minmax(0,1fr) 0}
+.app.no-insp .insp{display:none}
+
+.side{border-right:1px solid var(--line);overflow:auto;padding:8px 0 16px}
+.side h2{font-size:11px;font-weight:600;color:var(--dim);padding:14px 16px 6px}
+.side h2:first-child{padding-top:6px}
+.side ul{list-style:none}
+.node{display:flex;align-items:center;gap:6px;width:100%;padding:4px 12px 4px calc(12px + var(--d,0) * 14px);border:0;background:none;text-align:left;cursor:pointer;color:var(--ink-2)}
+.node:hover{background:var(--hover);color:var(--ink)}
+.node[aria-current="true"]{background:var(--sel-wash);color:var(--ink);box-shadow:inset 0 1px 0 var(--sel),inset 0 -1px 0 var(--sel)}
+.node .tw{width:12px;height:12px;color:var(--dim)}
+.node .lbl{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.node .cnt{font-family:var(--mono);font-size:12px}
+.watch-dot{width:7px;height:7px;border-radius:50%;background:var(--ink);flex:none}
+.watch-dot.off{background:transparent;border:1px solid var(--dim)}
+
+/* 목록 */
+.list{display:flex;flex-direction:column;min-width:0;min-height:0;border-right:1px solid var(--line)}
+.scroller{overflow:auto;flex:1;min-height:0}
+table{width:100%;border-collapse:collapse;table-layout:fixed}
+.files th{position:sticky;top:0;z-index:1;background:var(--bg);font-size:12px;font-weight:500;color:var(--dim);text-align:left;padding:0;border-bottom:1px solid var(--line);height:32px}
+.files th button{width:100%;height:32px;padding:0 12px;border:0;background:none;text-align:inherit;cursor:pointer;color:inherit;display:flex;align-items:center;gap:4px}
+.files th.r button{justify-content:flex-end}
+.files th button:hover{color:var(--ink)}
+.files th[aria-sort] button{color:var(--ink)}
+.files th .ico{width:10px;height:10px}
+.r{text-align:right}
+.files td{height:34px;padding:0 12px;border-bottom:1px solid var(--line-soft);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:background-color 1.6s ease}
+.files tr{cursor:default}
+.files tbody tr:hover td{background:var(--hover)}
+.nm{display:flex;align-items:center;gap:8px;min-width:0}
+.nm span{overflow:hidden;text-overflow:ellipsis;font-size:14px;font-weight:500}
+.nm .ico{color:var(--dim)}
+.files tr.dir .nm span{font-weight:600}
+.files tr[aria-selected="true"] td{background:var(--sel-wash);box-shadow:inset 0 1px 0 var(--sel),inset 0 -1px 0 var(--sel)}
+.files tr.recent-up td{background:var(--up-wash)}
+.files tr.recent-down td{background:var(--down-wash)}
+.files tr.tick-up td{animation:tick-up .6s var(--ease)}
+.files tr.tick-down td{animation:tick-down .6s var(--ease)}
+@keyframes tick-up{from{background:var(--up-flash)}to{background:var(--up-wash)}}
+@keyframes tick-down{from{background:var(--down-flash)}to{background:var(--down-wash)}}
+.files tr.gone td{color:var(--dim)}
+.files tr.gone .nm span,.files tr.gone td.c-size{text-decoration:line-through;text-decoration-color:var(--down)}
+.files tr.leaving{opacity:0;transition:opacity .6s ease}
+.c-ev{font-family:var(--mono);font-size:12px;letter-spacing:.02em}
+
+.band{display:flex;align-items:center;gap:10px;padding:8px 12px;background:var(--ink);color:var(--bg);font-weight:500}
+.band .ico{stroke-width:2}
+.band .btn{margin-left:auto;height:26px;border-color:var(--bg);color:var(--bg)}
+.band .btn:hover{background:rgba(16,21,28,.1);color:var(--bg)}
+.band.quiet .btn:hover{background:var(--hover);color:var(--ink)}
+.band.quiet{background:var(--raise);color:var(--ink);border-bottom:1px solid var(--line)}
+.band.quiet .btn{border-color:var(--line);color:var(--ink)}
+.empty{padding:56px 32px;max-width:520px}
+.empty h3{font-size:16px;font-weight:600;margin-bottom:8px}
+.empty p{color:var(--ink-2);margin-bottom:16px}
+.empty code{font-family:var(--mono);background:var(--raise);padding:2px 6px;border-radius:3px}
+.skel td span{display:block;height:10px;border-radius:2px;background:linear-gradient(90deg,var(--raise),#212c39,var(--raise));background-size:200% 100%;animation:shimmer 1.4s linear infinite}
+@keyframes shimmer{to{background-position:-200% 0}}
+
+/* 변경 내용 패널 */
+.insp{display:flex;flex-direction:column;min-height:0;background:var(--bg-2)}
+.insp-head{padding:14px 16px 12px;border-bottom:1px solid var(--line)}
+.insp-head:empty{display:none}
+.part summary{list-style:none;cursor:pointer}.part summary::-webkit-details-marker{display:none}
+.part summary h4 .tw{width:12px;height:12px;color:var(--dim);transition:transform .15s var(--ease)}.part[open] summary h4 .tw{transform:rotate(90deg)}
+.files td.num.up,.files td.num.down{font-weight:600}
+.list.stale .files td{background:none!important;color:var(--dim)}.list.stale .files .up,.list.stale .files .down{color:var(--dim)}
+.insp-name{display:flex;align-items:center;gap:8px;font-size:16px;font-weight:600}
+.insp-path{font-family:var(--mono);font-size:12px;color:var(--dim);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.insp-meta{display:flex;flex-wrap:wrap;gap:4px 12px;margin-top:10px;color:var(--ink-2);font-size:12px}
+.insp-meta .ev{font-family:var(--mono);font-weight:600}
+.insp-actions{display:flex;gap:6px;margin-top:12px}
+.insp-body{overflow:auto;flex:1;min-height:0;padding:12px 16px 20px}
+.summary{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:12px;color:var(--ink-2);margin-bottom:12px}
+.summary b{font-family:var(--mono);font-weight:600}
+.part{margin-bottom:16px}
+.part h4{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:600;color:var(--ink-2);margin-bottom:6px}
+.part h4 .tag{font-family:var(--mono);font-weight:600}
+.diff{font-family:var(--mono);font-size:12.5px;line-height:1.6;border:1px solid var(--line);border-radius:4px;overflow:hidden}
+.diff div{display:grid;grid-template-columns:34px 34px 16px 1fr;white-space:pre-wrap;word-break:break-all}
+.diff .ln{color:var(--dim);text-align:right;padding-right:6px;user-select:none}
+.diff .hunk{display:block;color:var(--dim);background:var(--raise);padding:2px 8px}
+.diff .a{background:var(--add-wash)}.diff .a .g{color:var(--add)}
+.diff .d{background:var(--del-wash)}.diff .d .g{color:var(--del)}
+.prose{border:1px solid var(--line);border-radius:4px;padding:10px 12px;line-height:1.7;color:var(--ink-2)}
+.prose ins{text-decoration:none;background:var(--add-wash);color:#b6f0bf;box-shadow:inset 0 -1px 0 var(--add)}
+.prose del{background:var(--del-wash);color:#ffc2bd;text-decoration-color:var(--del)}
+.prose ins::before{content:"+";color:var(--add);font-family:var(--mono);margin-right:1px}
+.prose del::before{content:"−";color:var(--del);font-family:var(--mono);margin-right:1px}
+.pair{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.pair figure{border:1px solid var(--line);border-radius:4px;overflow:hidden;background:#0c1016}
+.pair figcaption{display:flex;justify-content:space-between;font-size:11px;color:var(--dim);padding:4px 8px;border-top:1px solid var(--line)}
+.pair figcaption b{font-weight:600;color:var(--ink-2)}
+.pair figure.was{border-color:rgba(248,81,73,.5)}.pair figure.now{border-color:rgba(63,185,80,.5)}
+.pair svg,.swipe svg{display:block;width:100%;height:auto}
+.swipe{position:relative;border:1px solid var(--line);border-radius:4px;overflow:hidden;background:#0c1016}
+.swipe .top{position:absolute;inset:0;clip-path:inset(0 0 0 var(--cut,50%))}
+.swipe .handle{position:absolute;top:0;bottom:0;left:var(--cut,50%);width:2px;background:var(--ink);transform:translateX(-1px)}
+.swipe-ctl{display:flex;align-items:center;gap:10px;margin-top:8px;font-size:12px;color:var(--dim)}
+.swipe-ctl input{flex:1;accent-color:var(--sel)}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:4px;overflow:hidden;margin-left:auto}
+.seg button{border:0;background:none;padding:3px 10px;font-size:12px;color:var(--dim);cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--hover);color:var(--ink)}
+.facts{display:grid;grid-template-columns:auto 1fr;gap:4px 16px;font-size:12px;margin-top:10px}
+.facts dt{color:var(--dim)}.facts dd{font-family:var(--mono)}
+.confirm{margin-top:12px;padding:10px 12px;border:1px solid var(--ink-2);border-radius:4px;font-size:12px;color:var(--ink-2)}
+.confirm div{display:flex;gap:6px;margin-top:8px}
+.note{color:var(--ink-2);line-height:1.6}
+
+/* 하단 로그 */
+.log{display:grid;grid-template-columns:minmax(0,1fr) 260px;border-top:1px solid var(--line);background:var(--bg-2);min-height:0}
+.log-main{display:flex;flex-direction:column;min-height:0}
+.log-bar{display:flex;align-items:center;gap:8px;padding:0 12px;height:38px;border-bottom:1px solid var(--line)}
+.log-bar h2{font-size:13px;font-weight:600;margin-right:6px}
+.chip{height:24px;padding:0 10px;border:1px solid var(--line);border-radius:12px;background:none;color:var(--dim);cursor:pointer;font-size:12px}
+.chip:hover{color:var(--ink)}
+.chip[aria-pressed="true"]{color:var(--ink);border-color:var(--ink-2)}
+.log-bar .search{width:200px;height:26px;margin-left:auto}
+.events td{height:24px;padding:0 12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-family:var(--mono);font-size:12.5px;font-variant-numeric:tabular-nums}
+.events td.t{color:var(--dim);width:118px}
+.events td.e{width:110px;font-weight:600}
+.events td.x{width:150px;text-align:right;color:var(--ink-2)}
+.events tr{cursor:pointer}.events tr:hover td{background:var(--hover)}
+.events tr.fresh td{animation:fresh 1.2s var(--ease)}
+@keyframes fresh{from{background:#243041}to{background:transparent}}
+.tally{border-left:1px solid var(--line);padding:10px 16px;display:flex;flex-direction:column;gap:10px;min-height:0;overflow:auto}
+.tally h2{font-size:13px;font-weight:600}
+.tally dl{display:grid;grid-template-columns:1fr auto;row-gap:4px;align-items:baseline}
+.tally dt{color:var(--dim);font-size:12px}
+.tally dd{font-family:var(--mono);font-size:19px;font-weight:600;text-align:right;font-variant-numeric:tabular-nums}
+.tally dd i{font-style:normal;font-size:13px;margin-right:6px;vertical-align:2px}
+.band.ovf{padding:4px 8px 4px 12px;font-size:12px}
+.band.ovf[hidden]{display:none}
+
+.status{display:flex;align-items:center;gap:20px;padding:0 12px;border-top:1px solid var(--line);background:var(--raise);color:var(--dim);font-size:12px;white-space:nowrap}
+.status .sp{margin-left:auto}
+
+/* 컨텍스트 메뉴, 토스트 */
+.menu{position:fixed;z-index:20;min-width:220px;padding:4px;background:var(--raise);border:1px solid var(--line-float);border-radius:6px;box-shadow:0 8px 24px rgba(0,0,0,.45)}
+.menu[hidden]{display:none}
+.menu button{display:flex;justify-content:space-between;width:100%;padding:6px 10px;border:0;background:none;border-radius:4px;cursor:pointer;text-align:left;color:var(--ink)}
+.menu button:hover,.menu button:focus-visible{background:var(--hover);outline:0}
+.menu kbd{font-family:var(--mono);font-size:11px;color:var(--dim)}
+.menu hr{border:0;border-top:1px solid var(--line);margin:4px 0}
+.empty code{white-space:nowrap}
+.toast{position:fixed;left:50%;bottom:calc(var(--log) + 44px);transform:translate(-50%,8px);opacity:0;display:flex;align-items:center;gap:14px;padding:8px 8px 8px 14px;background:var(--raise);color:var(--ink);border:1px solid var(--line-float);border-radius:6px;box-shadow:0 8px 24px rgba(0,0,0,.45);transition:opacity .2s var(--ease),transform .2s var(--ease);pointer-events:none}
+.toast.on{opacity:1;transform:translate(-50%,0);pointer-events:auto}
+.toast .btn{height:26px}
+
+@media (max-width:1439px){:root{--insp:380px}}
+@media (max-width:1279px){:root{--sidebar:200px;--insp:320px}.hb .search{width:160px}.metrics .lat{display:none}.files col:nth-child(4),.files col:nth-child(6){width:0!important}.files th:nth-child(4),.files td:nth-child(4),.files th:nth-child(6),.files td:nth-child(6){padding:0;font-size:0;visibility:hidden}}
+@media (max-height:800px){:root{--log:196px}}
+@media (prefers-reduced-motion:reduce){
+  .files tr.tick-up td,.files tr.tick-down td,.events tr.fresh td,.skel td span{animation:none}
+  .files td,.files tr.leaving,.toast{transition:none}
+}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-back" viewBox="0 0 16 16"><path d="M10 3 5 8l5 5"/></symbol>
+  <symbol id="i-fwd" viewBox="0 0 16 16"><path d="m6 3 5 5-5 5"/></symbol>
+  <symbol id="i-upd" viewBox="0 0 16 16"><path d="M8 13V3M3.5 7.5 8 3l4.5 4.5"/></symbol>
+  <symbol id="i-chev" viewBox="0 0 16 16"><path d="m6 3 5 5-5 5"/></symbol>
+  <symbol id="i-chevd" viewBox="0 0 16 16"><path d="m3 6 5 5 5-5"/></symbol>
+  <symbol id="i-search" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.5"/><path d="m10.5 10.5 3.5 3.5"/></symbol>
+  <symbol id="i-menu" viewBox="0 0 16 16"><path d="M2.5 4h11M2.5 8h11M2.5 12h11"/></symbol>
+  <symbol id="i-x" viewBox="0 0 16 16"><path d="m4 4 8 8M12 4l-8 8"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 16 16"><path d="M8 3v10M3 8h10"/></symbol>
+  <symbol id="i-folder" viewBox="0 0 16 16"><path d="M1.5 4.5v8h13v-7H7.5L6 4H1.5z"/></symbol>
+  <symbol id="i-code" viewBox="0 0 16 16"><path d="M3 1.5h6.5l3.5 3.5v9.5H3zM9.5 1.5V5H13M6.5 8.5 5 10l1.5 1.5M9.5 8.5 11 10l-1.5 1.5"/></symbol>
+  <symbol id="i-text" viewBox="0 0 16 16"><path d="M3 1.5h6.5l3.5 3.5v9.5H3zM9.5 1.5V5H13M5.5 8h5M5.5 10.5h5M5.5 13h3"/></symbol>
+  <symbol id="i-image" viewBox="0 0 16 16"><rect x="1.5" y="2.5" width="13" height="11" rx="1"/><circle cx="5.5" cy="6" r="1.2"/><path d="m2 12 4-4 3 3 2-2 3.5 3.5"/></symbol>
+  <symbol id="i-doc" viewBox="0 0 16 16"><path d="M3 1.5h6.5l3.5 3.5v9.5H3zM9.5 1.5V5H13"/><rect x="5" y="8" width="3.5" height="3" rx=".5"/><path d="M10 8.5h1.5M10 10.5h1.5M5 13h6.5"/></symbol>
+  <symbol id="i-bin" viewBox="0 0 16 16"><path d="M3 1.5h6.5l3.5 3.5v9.5H3zM9.5 1.5V5H13"/><path d="M5.5 8.5v3M8 8.5v3M10.5 8.5v3"/></symbol>
+  <symbol id="i-warn" viewBox="0 0 16 16"><path d="M8 1.8 15 14H1zM8 6v3.5M8 11.6v.1"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 16 16"><path d="M2.5 4h11M6 4V2.5h4V4M4 4l.7 9.5h6.6L12 4"/></symbol>
+  <symbol id="i-home" viewBox="0 0 16 16"><path d="M2 7.5 8 2.5l6 5M3.5 6.5v7h9v-7"/></symbol>
+  <symbol id="i-panel" viewBox="0 0 16 16"><rect x="1.5" y="2.5" width="13" height="11" rx="1"/><path d="M10 2.5v11"/></symbol>
+  <symbol id="i-restore" viewBox="0 0 16 16"><path d="M2.5 8a5.5 5.5 0 1 0 1.6-3.9M2.5 2.5v3h3M8 5v3.2l2 1.3"/></symbol>
+</svg>
+
+<div class="app" id="app">
+  <header class="hb">
+    <div class="grp">
+      <button class="btn" aria-label="뒤로"><svg class="ico"><use href="#i-back"/></svg></button>
+      <button class="btn" aria-label="앞으로" disabled><svg class="ico"><use href="#i-fwd"/></svg></button>
+      <button class="btn" aria-label="상위 폴더"><svg class="ico"><use href="#i-upd"/></svg></button>
+    </div>
+    <nav class="crumb" aria-label="현재 경로">
+      <button><svg class="ico" style="width:14px;height:14px;color:inherit"><use href="#i-home"/></svg></button>
+      <svg class="ico"><use href="#i-chev"/></svg><button>projects</button>
+      <svg class="ico"><use href="#i-chev"/></svg><button aria-current="page">filescope</button>
+    </nav>
+    <label class="search"><svg class="ico"><use href="#i-search"/></svg><span class="sr">이 폴더에서 검색</span><input placeholder="이 폴더에서 검색"></label>
+    <div class="metrics" aria-live="off">
+      <span>감시 경로<b id="m-paths">3</b></span>
+      <span>최근 1분 이벤트<b id="m-rate">9</b></span>
+      <span class="lat">반영 지연 P95<b id="m-lat">38ms</b></span>
+    </div>
+    <div class="grp">
+      <button class="btn" id="t-insp" aria-pressed="true" aria-label="변경 내용 패널"><svg class="ico"><use href="#i-panel"/></svg></button>
+      <button class="btn" aria-label="메뉴"><svg class="ico"><use href="#i-menu"/></svg></button>
+    </div>
+  </header>
+
+  <div class="tabs" role="tablist" aria-label="열린 위치">
+    <button class="tab" role="tab" aria-selected="true">filescope<span class="x" aria-label="탭 닫기"><svg class="ico"><use href="#i-x"/></svg></span></button>
+    <button class="tab" role="tab" aria-selected="false">src<span class="x" aria-label="탭 닫기"><svg class="ico"><use href="#i-x"/></svg></span></button>
+    <button class="tab" role="tab" aria-selected="false">Downloads<span class="x" aria-label="탭 닫기"><svg class="ico"><use href="#i-x"/></svg></span></button>
+    <button class="tab-add" aria-label="새 탭"><svg class="ico"><use href="#i-plus"/></svg></button>
+  </div>
+
+  <div class="work">
+    <nav class="side" aria-label="위치">
+      <h2>즐겨찾기</h2>
+      <ul>
+        <li><button class="node"><svg class="ico"><use href="#i-home"/></svg><span class="lbl">홈</span></button></li>
+        <li><button class="node" aria-current="true"><span class="watch-dot" title="감시 중"></span><span class="lbl">filescope</span></button></li>
+        <li><button class="node"><span class="watch-dot" title="감시 중"></span><span class="lbl">notes</span></button></li>
+        <li><button class="node"><span class="watch-dot off" title="감시 안 함"></span><span class="lbl">Downloads</span></button></li>
+      </ul>
+      <h2>폴더</h2>
+      <ul role="tree" aria-label="폴더 트리" id="tree"></ul>
+      <h2>시스템</h2>
+      <ul><li><button class="node"><svg class="ico"><use href="#i-trash"/></svg><span class="lbl">휴지통</span><span class="cnt flat">5</span></button></li></ul>
+    </nav>
+
+    <section class="list" aria-label="파일 목록">
+      <div id="list-band"></div>
+      <div class="scroller" id="scroller">
+        <table class="files" id="files" aria-label="filescope 안의 항목" aria-rowcount="-1">
+          <colgroup><col><col style="width:92px"><col style="width:112px"><col style="width:96px"><col style="width:122px"><col style="width:104px"></colgroup>
+          <thead><tr>
+            <th aria-sort="ascending" data-k="name"><button>이름<svg class="ico"><use href="#i-chevd"/></svg></button></th>
+            <th class="r" data-k="size"><button>크기</button></th>
+            <th class="r" data-k="delta"><button>변동</button></th>
+            <th data-k="ev"><button>이벤트</button></th>
+            <th data-k="mtime"><button>수정 시각</button></th>
+            <th><button>권한</button></th>
+          </tr></thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <aside class="insp" aria-label="변경 내용" id="insp">
+      <div class="insp-head" id="insp-head"></div>
+      <div class="insp-body" id="insp-body" aria-live="polite"></div>
+    </aside>
+  </div>
+
+  <section class="log" aria-label="이벤트 로그">
+    <div class="log-main">
+      <div class="log-bar">
+        <h2>이벤트 로그</h2>
+        <button class="chip" aria-pressed="true" data-f="all">전체</button>
+        <button class="chip" aria-pressed="false" data-f="cd">생성·삭제</button>
+        <button class="chip" aria-pressed="false" data-f="mod">수정</button>
+        <button class="chip" aria-pressed="false" data-f="mv">이동</button>
+        <button class="chip" aria-pressed="false" data-f="attr">속성</button>
+        <label class="search"><svg class="ico"><use href="#i-search"/></svg><span class="sr">경로로 로그 거르기</span><input id="log-q" placeholder="경로로 거르기"></label>
+      </div>
+      <div class="band quiet ovf" role="status"><svg class="ico"><use href="#i-warn"/></svg><span><span class="num" id="ovf-t">14:29:11</span> 이벤트 대기열이 넘쳤습니다. 놓친 변경이 없도록 filescope를 다시 검사해 맞췄습니다.</span><button class="btn" id="ovf-x">확인</button></div>
+      <div class="scroller"><table class="events"><tbody id="events"></tbody></table></div>
+    </div>
+    <div class="tally">
+      <h2>이번 세션</h2>
+      <dl id="tally"></dl>
+    </div>
+  </section>
+
+  <footer class="status">
+    <span id="st-count">10개 항목</span>
+    <span id="st-sel">README.md 선택</span>
+    <span class="sp">이력 보관 128 MB</span>
+    <span>디스크 여유 41.2 GB</span>
+    <span>inotify watch <span class="num">214 / 8192</span></span>
+  </footer>
+</div>
+
+<div class="menu" id="menu" role="menu" hidden>
+  <button role="menuitem">열기<kbd>Enter</kbd></button>
+  <button role="menuitem" data-a="changes">변경 내용 보기<kbd>Ctrl+D</kbd></button>
+  <hr>
+  <button role="menuitem">잘라내기<kbd>Ctrl+X</kbd></button>
+  <button role="menuitem">복사<kbd>Ctrl+C</kbd></button>
+  <button role="menuitem">이름 바꾸기<kbd>F2</kbd></button>
+  <hr>
+  <button role="menuitem" data-a="trash">휴지통으로 이동<kbd>Delete</kbd></button>
+  <button role="menuitem" class="danger">영구 삭제…<kbd>Shift+Delete</kbd></button>
+  <hr>
+  <button role="menuitem">속성<kbd>Alt+Enter</kbd></button>
+</div>
+<div class="toast" id="toast" role="status"><span id="toast-msg"></span><button class="btn" id="toast-undo">실행 취소</button></div>
+
+<script>
+(() => {
+const q = new URLSearchParams(location.search);
+const STATE = q.get('state'), STATIC = q.has('static');
+const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const now = () => Date.now();
+const ago = s => now() - s * 1000;
+const pad = (n, w = 2) => String(n).padStart(w, '0');
+const hms = t => { const d = new Date(t); return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`; };
+const hmsm = t => `${hms(t)}.${pad(new Date(t).getMilliseconds(), 3)}`;
+const when = t => { const s = (now() - t) / 1000, d = new Date(t);
+  if (s < 86400 && new Date().getDate() === d.getDate()) return hms(t);
+  if (s < 172800) return `어제 ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  return `${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`; };
+const kb = b => b < 1024 ? `${b} B` : b < 1048576 ? `${(b / 1024).toFixed(1)} KB` : `${(b / 1048576).toFixed(1)} MB`;
+const signed = b => (b > 0 ? '+' : '−') + kb(Math.abs(b));
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const icon = (id, cls = 'ico') => `<svg class="${cls}"><use href="#i-${id}"/></svg>`;
+const ICON = { folder: 'folder', code: 'code', text: 'text', image: 'image', doc: 'doc', bin: 'bin' };
+const MARK = { CREATE: '●', DELETE: '✕', MOVE: '→', ATTRIB: '◦' };
+const mark = (ev, dir) => MARK[ev] || (dir === 'down' ? '▼' : '▲');
+const evDir = (ev, dir) => ev === 'CREATE' ? 'up' : ev === 'DELETE' ? 'down' : (ev === 'MOVE' || ev === 'ATTRIB') ? 'flat' : dir;
+
+// 데모 데이터: ~/projects/filescope (가상의 내용, 시안 전용)
+const files = [
+  { id: 'build', name: 'build', kind: 'folder', items: 42, mtime: ago(120), perm: 'rwxr-xr-x' },
+  { id: 'docs', name: 'docs', kind: 'folder', items: 9, mtime: ago(22), perm: 'rwxr-xr-x', ev: 'MOVE', dir: 'flat', delta: '→ 1' },
+  { id: 'src', name: 'src', kind: 'folder', items: 14, mtime: ago(15), perm: 'rwxr-xr-x', ev: 'MODIFY', dir: 'up', delta: '▲ 4' },
+  { id: 'tests', name: 'tests', kind: 'folder', items: 6, mtime: ago(72000), perm: 'rwxr-xr-x' },
+  { id: 'gitignore', name: '.gitignore', kind: 'text', size: 214, mtime: ago(190000), perm: 'rw-r--r--' },
+  { id: 'build-log', name: 'build.log', kind: 'text', size: 48230, mtime: ago(2), perm: 'rw-r--r--', ev: 'MODIFY', dir: 'up', change: 1240, recent: true },
+  { id: 'cmake', name: 'CMakeLists.txt', kind: 'code', size: 1842, mtime: ago(400), perm: 'rw-r--r--', ev: 'MODIFY', dir: 'up', change: 96 },
+  { id: 'readme', name: 'README.md', kind: 'doc', size: 6350, mtime: ago(5), perm: 'rw-r--r--', ev: 'MODIFY', dir: 'up', change: 240, recent: true },
+  { id: 'arch', name: 'architecture.png', kind: 'image', size: 200704, mtime: ago(40), perm: 'rw-r--r--', ev: 'MODIFY', dir: 'up', change: 14336 },
+  { id: 'deck', name: '중간발표.docx', kind: 'doc', size: 2516582, mtime: ago(10800), perm: 'rw-r--r--', ev: 'MODIFY', dir: 'down', change: -41984 },
+  { id: 'tmp', name: 'tmp_scan.o', kind: 'bin', size: 22528, mtime: ago(25), perm: 'rw-r--r--', ev: 'DELETE', dir: 'down', gone: true },
+];
+const byId = id => files.find(f => f.id === id);
+let selected = 'readme', sortKey = 'name', sortAsc = true, logFilter = 'all', logQuery = '';
+const tally = { 생성: 12, 수정: 48, 삭제: 5, 이동: 3, 속성: 7 };
+const events = [];
+
+// 트리
+const tree = [
+  ['filescope', 0, true, 'up', '▲ 7'], ['build', 1], ['docs', 1, false, 'flat', '→ 1'], ['src', 1, false, 'up', '▲ 4'],
+  ['ui', 2], ['tests', 1], ['notes', 0, false]];
+document.getElementById('tree').innerHTML = tree.map(([n, d, cur, dir, c]) =>
+  `<li role="treeitem" aria-level="${d + 1}" aria-expanded="${n === 'filescope' || n === 'src'}"><button class="node" style="--d:${d}" ${cur ? 'aria-current="true"' : ''}>` +
+  `${icon(n === 'filescope' || n === 'src' ? 'chevd' : 'chev', 'ico tw')}<span class="lbl">${n}</span>` +
+  `${c ? `<span class="cnt ${dir}">${c}</span>` : ''}</button></li>`).join('');
+
+// 목록
+function deltaCell(f) {
+  if (f.gone) return `<td class="r num down">✕ 삭제</td>`;
+  if (f.delta) return `<td class="r num ${f.dir}">${f.delta}</td>`;
+  if (f.ev === 'CREATE') return `<td class="r num up">● 신규</td>`;
+  if (f.change) return `<td class="r num ${f.dir}">${f.dir === 'down' ? '▼' : '▲'} ${signed(f.change)}</td>`;
+  return `<td class="r num flat">—</td>`;
+}
+function rowHTML(f) {
+  const d = f.ev ? evDir(f.ev, f.dir) : 'flat';
+  const cls = [f.kind === 'folder' ? 'dir' : '', f.gone ? 'gone' : '', f.recent && !f.gone ? `recent-${d === 'down' ? 'down' : 'up'}` : ''].join(' ');
+  return `<tr data-id="${f.id}" class="${cls}" tabindex="${f.id === selected ? 0 : -1}" aria-selected="${f.id === selected}">` +
+    `<td><div class="nm">${icon(ICON[f.kind])}<span>${esc(f.name)}</span></div></td>` +
+    `<td class="r num c-size">${f.kind === 'folder' ? `<span class="flat">${f.items}개</span>` : kb(f.size)}</td>` +
+    deltaCell(f) +
+    `<td class="c-ev ${f.ev ? d : 'flat'}">${f.ev ? `${mark(f.ev, f.dir)} ${f.ev}` : '—'}</td>` +
+    `<td class="num">${when(f.mtime)}</td><td class="num flat">${f.perm}</td></tr>`;
+}
+function sorted() {
+  const k = sortKey, m = sortAsc ? 1 : -1;
+  return [...files].sort((a, b) => {
+    if ((a.kind === 'folder') !== (b.kind === 'folder')) return a.kind === 'folder' ? -1 : 1;
+    if (k === 'size') return ((a.size || 0) - (b.size || 0)) * m;
+    if (k === 'mtime') return (a.mtime - b.mtime) * m;
+    if (k === 'delta') return ((a.change || 0) - (b.change || 0)) * m;
+    if (k === 'ev') return String(a.ev || '').localeCompare(String(b.ev || '')) * m;
+    return a.name.localeCompare(b.name, 'ko') * m;
+  });
+}
+const rowsEl = document.getElementById('rows');
+function renderRows() {
+  rowsEl.innerHTML = sorted().map(rowHTML).join('');
+  document.getElementById('st-count').textContent = `${files.filter(f => !f.gone).length}개 항목`;
+}
+function rowEl(id) { return rowsEl.querySelector(`tr[data-id="${id}"]`); }
+function select(id, focus) {
+  selected = id;
+  rowsEl.querySelectorAll('tr').forEach(tr => { const on = tr.dataset.id === id; tr.setAttribute('aria-selected', on); tr.tabIndex = on ? 0 : -1; });
+  const r = rowEl(id); if (r && focus) r.focus();
+  document.getElementById('st-sel').textContent = `${byId(id).name} 선택`;
+  renderInsp();
+}
+rowsEl.addEventListener('click', e => { const tr = e.target.closest('tr'); if (tr) select(tr.dataset.id, true); });
+rowsEl.addEventListener('keydown', e => {
+  const trs = [...rowsEl.querySelectorAll('tr')], i = trs.findIndex(t => t.dataset.id === selected);
+  if (e.key === 'ArrowDown' && i < trs.length - 1) { e.preventDefault(); select(trs[i + 1].dataset.id, true); }
+  if (e.key === 'ArrowUp' && i > 0) { e.preventDefault(); select(trs[i - 1].dataset.id, true); }
+  if (e.key === 'ContextMenu' || (e.shiftKey && e.key === 'F10')) { e.preventDefault(); const r = rowEl(selected).getBoundingClientRect(); openMenu(r.left + 40, r.bottom); }
+});
+document.querySelectorAll('.files th[data-k] button').forEach(b => b.addEventListener('click', () => {
+  const th = b.parentElement, k = th.dataset.k;
+  sortAsc = sortKey === k ? !sortAsc : true; sortKey = k;
+  document.querySelectorAll('.files th').forEach(t => { t.removeAttribute('aria-sort'); const s = t.querySelector('svg'); if (s) s.remove(); });
+  th.setAttribute('aria-sort', sortAsc ? 'ascending' : 'descending');
+  b.insertAdjacentHTML('beforeend', icon(sortAsc ? 'chevd' : 'upd'));
+  renderRows();
+}));
+
+// 변경 내용 패널: 파일 종류별 비교
+const diagram = v => `<svg viewBox="0 0 320 ${v ? 190 : 180}" role="img" aria-label="아키텍처 다이어그램 ${v ? '현재' : '이전'} 버전">
+  <rect width="320" height="${v ? 190 : 180}" fill="#f4f6f8"/>
+  <g font-family="sans-serif" font-size="11" fill="#1d2733" text-anchor="middle">
+  <rect x="16" y="24" width="80" height="32" rx="3" fill="#fff" stroke="#1d2733"/><text x="56" y="44">inotify</text>
+  <rect x="120" y="24" width="80" height="32" rx="3" fill="#fff" stroke="#1d2733"/><text x="160" y="44">normalizer</text>
+  <rect x="224" y="24" width="80" height="32" rx="3" fill="#fff" stroke="#1d2733"/><text x="264" y="44">dispatcher</text>
+  <path d="M96 40h24M200 40h24" stroke="#1d2733"/>
+  <rect x="120" y="${v ? 112 : 104}" width="80" height="32" rx="3" fill="#fff" stroke="#1d2733"/><text x="160" y="${v ? 132 : 124}">UI 목록</text>
+  <path d="M264 56v${v ? 72 : 64}h-64" stroke="#1d2733" fill="none"/>
+  ${v ? `<rect x="224" y="112" width="80" height="32" rx="3" fill="#fff" stroke="#c0392b" stroke-width="1.5"/><text x="264" y="132">history DB</text>
+  <path d="M264 56v56" stroke="#c0392b"/><rect x="218" y="106" width="92" height="44" fill="none" stroke="#1d2733" stroke-dasharray="4 3"/>` : ''}
+  </g></svg>`;
+const shot = () => `<svg viewBox="0 0 320 180" role="img" aria-label="데모 화면 첫 프레임"><rect width="320" height="180" fill="#10151c"/>
+  <rect x="0" y="0" width="320" height="18" fill="#18202a"/><rect x="0" y="18" width="70" height="162" fill="#141b24"/>
+  <g fill="#263241">${[30, 52, 74, 96, 118, 140].map(y => `<rect x="82" y="${y}" width="226" height="14"/>`).join('')}</g>
+  <rect x="82" y="30" width="226" height="14" fill="#f0525a" opacity=".45"/></svg>`;
+
+const D = {
+  readme: { kind: 'compound', from: 'v6', to: 'v7', base: 248,
+    summary: [['텍스트 블록', '2 수정'], ['첨부 이미지', '1 교체 · 1 추가']],
+    parts: [
+      { h: '텍스트 · ## 빌드', tag: '수정', body: `<div class="prose">빌드 디렉터리를 만든 뒤 <code>cmake -S . -B build<ins> -G Ninja</ins></code>로 구성하고 <del>make</del><ins>ninja -C build</ins>로 빌드합니다.</div>` },
+      { h: '텍스트 · ## 감시 동작', tag: '수정', body: `<div class="prose">감시 경로의 하위 폴더는 생성되는 즉시 등록됩니다. <ins>대기열이 넘치면(OVERFLOW) 감시 경로 전체를 다시 검사해 목록과 상태를 맞춥니다.</ins></div>` },
+      { h: '첨부 이미지 · docs/architecture.png', tag: '± 교체', body: `<div class="pair"><figure class="was">${diagram(0)}<figcaption><b>이전 v6</b><span>182 KB</span></figcaption></figure><figure class="now">${diagram(1)}<figcaption><b>현재 v7</b><span>196 KB</span></figcaption></figure></div>` },
+      { h: '첨부 이미지 · docs/demo.gif', tag: '+ 추가', body: `<div class="pair"><figure class="now" style="grid-column:1/-1">${shot()}<figcaption><b>새 첨부</b><span>640×360 · 1.1 MB · 48프레임</span></figcaption></figure></div>` },
+    ] },
+  cmake: { kind: 'text', from: 'v3', to: 'v4', base: 400, plus: 4, minus: 2, lines: [
+    ['h', '@@ -1,8 +1,10 @@'],
+    [' ', 1, 1, 'cmake_minimum_required(VERSION 3.21)'], [' ', 2, 2, ''],
+    ['-', 3, 0, 'project(linux_file_explorer VERSION 0.1.0 LANGUAGES CXX)'],
+    ['+', 0, 3, 'project(filescope VERSION 0.1.0 LANGUAGES C)'], [' ', 4, 4, ''],
+    ['-', 5, 0, 'set(CMAKE_CXX_STANDARD 17)'], ['+', 0, 5, 'set(CMAKE_C_STANDARD 17)'],
+    ['+', 0, 6, 'find_package(PkgConfig REQUIRED)'], ['+', 0, 7, 'pkg_check_modules(GTK3 REQUIRED gtk+-3.0)'],
+    [' ', 6, 8, ''], [' ', 7, 9, 'add_executable(${PROJECT_NAME}']] },
+  'build-log': { kind: 'text', from: 'v118', to: 'v119', base: 3, plus: 3, minus: 0, lines: [
+    ['h', '@@ -611,2 +611,5 @@'],
+    [' ', 611, 611, '[ 38%] Building C object src/CMakeFiles/filescope.dir/normalizer.c.o'],
+    [' ', 612, 612, '[ 40%] Building C object src/CMakeFiles/filescope.dir/dispatcher.c.o'],
+    ['+', 0, 613, '[ 42%] Building C object src/CMakeFiles/filescope.dir/watcher.c.o'],
+    ['+', 0, 614, 'src/watcher.c:212:9: warning: unused variable ‘cookie’ [-Wunused-variable]'],
+    ['+', 0, 615, '[ 44%] Building C object src/CMakeFiles/filescope.dir/history_store.c.o']] },
+  arch: { kind: 'image', from: 'v2', to: 'v3', base: 1800 },
+  deck: { kind: 'compound', from: 'v11', to: 'v12', base: 900,
+    summary: [['문단', '1 수정'], ['그림', '1 교체'], ['표', '셀 2 수정']],
+    parts: [
+      { h: '문단 · 3쪽 「성능 측정」', tag: '수정', body: `<div class="prose">Ubuntu 24.04, 8코어 VM에서 초당 <del>500</del><ins>1000</ins>건 이벤트를 <del>10분</del><ins>30분</ins> 동안 주입했다.</div>` },
+      { h: '표 · 표 1 측정 결과', tag: '셀 2 수정', body: `<div class="diff"><div class="d"><span class="ln">4</span><span class="ln"></span><span class="g">−</span><span>| 반영 지연 P95 | 120ms | 미달 |</span></div><div class="a"><span class="ln"></span><span class="ln">4</span><span class="g">+</span><span>| 반영 지연 P95 | 38ms  | 통과 |</span></div></div>` },
+      { h: '그림 · 그림 2 아키텍처', tag: '± 교체', body: `<div class="pair"><figure class="was">${diagram(0)}<figcaption><b>이전 v11</b><span>182 KB</span></figcaption></figure><figure class="now">${diagram(1)}<figcaption><b>현재 v12</b><span>196 KB</span></figcaption></figure></div>` },
+    ] },
+  tmp: { kind: 'deleted' },
+};
+
+const inspHead = document.getElementById('insp-head'), inspBody = document.getElementById('insp-body');
+function renderInsp() {
+  const f = byId(selected);
+  if (!f) { inspHead.innerHTML = ''; document.getElementById('st-sel').textContent = '선택 없음'; inspBody.innerHTML = `<p class="note">파일을 선택하면 직전 버전과 무엇이 어떻게 달라졌는지 여기에 보입니다.</p>`; return; }
+  const d = D[f.id] || {};
+  const dir = f.ev ? evDir(f.ev, f.dir) : 'flat';
+  const at = f.mtime, base = d.base ? at - d.base * 1000 : null;
+  inspHead.innerHTML = `<div class="insp-name">${icon(ICON[f.kind])}${esc(f.name)}</div>
+    <div class="insp-path">~/projects/filescope/${esc(f.name)}${f.kind === 'folder' ? '/' : ''}</div>
+    <div class="insp-meta">${f.ev ? `<span class="ev ${dir}">${mark(f.ev, f.dir)} ${f.ev}</span>` : '<span class="flat">이 세션 변경 없음</span>'}
+      ${d.from ? `<span class="num">${d.from} → ${d.to}</span><span>직전 버전 <span class="num">${hms(base)}</span> 대비</span>` : ''}
+      ${f.ev ? `<span class="num">${hms(at)}</span>` : ''}</div>
+    ${d.from ? `<div class="insp-actions"><button class="btn" id="b-restore">${icon('restore')}${d.from}으로 되돌리기</button><button class="btn">전체 이력</button></div>` : ''}`;
+  inspBody.innerHTML = body(f, d);
+  const r = document.getElementById('b-restore');
+  if (r) r.addEventListener('click', () => {
+    if (inspBody.querySelector('.confirm')) return;
+    inspBody.insertAdjacentHTML('afterbegin', `<div class="confirm" role="alert">현재 내용을 ${d.from}으로 되돌립니다. 지금 버전 ${d.to}은 이력에 남아 다시 되돌릴 수 있습니다.<div><button class="btn primary" data-ok>되돌리기</button><button class="btn" data-no>취소</button></div></div>`);
+    const c = inspBody.querySelector('.confirm');
+    c.querySelector('[data-no]').onclick = () => c.remove();
+    c.querySelector('[data-ok]').onclick = () => { c.remove(); toast(`${f.name}을 ${d.from}으로 되돌렸습니다`); };
+    c.querySelector('[data-no]').focus();
+  });
+  const sw = inspBody.querySelector('.swipe-ctl input');
+  if (sw) sw.addEventListener('input', () => inspBody.querySelector('.swipe').style.setProperty('--cut', sw.value + '%'));
+  inspBody.querySelectorAll('.seg button').forEach(b => b.addEventListener('click', () => { imgMode = b.dataset.m; renderInsp(); }));
+}
+let imgMode = 'pair';
+function body(f, d) {
+  if (f.kind === 'folder') {
+    const n = f.id === 'src' ? [['▲ MODIFY', 'up', 'watcher.c', '+312 B'], ['● CREATE', 'up', 'event_queue.h', '1.2 KB'], ['◦ ATTRIB', 'flat', 'main.c', '644 → 755'], ['▼ MODIFY', 'down', 'normalizer.c', '−1.1 KB']]
+      : f.id === 'docs' ? [['→ MOVE', 'flat', 'notes.md ← ../notes.md', 'cookie 2291']] : [];
+    if (!n.length) return `<p class="note">이 세션에서 ${esc(f.name)} 안의 변경이 없습니다.</p>`;
+    return `<div class="summary">이 세션에서 <b>${n.length}</b>건 변경</div><table class="events"><tbody>` +
+      n.map(([e, c, p, x]) => `<tr><td class="e ${c}">${e}</td><td>${p}</td><td class="x">${x}</td></tr>`).join('') + `</tbody></table>`;
+  }
+  if (d.kind === 'text') return `<div class="summary"><span><b class="add" style="color:var(--add)">+${d.plus}</b> 줄 추가</span><span><b style="color:var(--del)">−${d.minus}</b> 줄 삭제</span></div><div class="diff">` +
+    d.lines.map(l => l[0] === 'h' ? `<span class="hunk">${esc(l[1])}</span>` :
+      `<div class="${l[0] === '+' ? 'a' : l[0] === '-' ? 'd' : ''}"><span class="ln">${l[1] || ''}</span><span class="ln">${l[2] || ''}</span><span class="g">${l[0] === '+' ? '+' : l[0] === '-' ? '−' : ''}</span><span>${esc(l[3]) || ' '}</span></div>`).join('') + `</div>`;
+  if (d.kind === 'compound') return `<div class="summary">${d.summary.map(([k, v]) => `<span>${k} <b>${v}</b></span>`).join('')}</div>` +
+    d.parts.map(p => `<details class="part" ${/^(텍스트|문단)/.test(p.h) && innerWidth <= 1366 ? '' : 'open'}><summary><h4>${icon('chev', 'ico tw')}<span>${p.h}</span><span class="tag" style="color:${p.tag.startsWith('+') ? 'var(--add)' : 'var(--ink-2)'}">${p.tag}</span></h4></summary>${p.body}</details>`).join('');
+  if (d.kind === 'image') return `<div class="summary"><span>크기 <b>1280×720 → 1280×760</b></span><span>용량 <b>182 KB → 196 KB</b></span><span>바뀐 영역 <b>1곳</b></span>
+      <span class="seg" role="group" aria-label="비교 방식"><button data-m="pair" aria-pressed="${imgMode === 'pair'}">나란히</button><button data-m="swipe" aria-pressed="${imgMode === 'swipe'}">겹쳐 밀기</button></span></div>` +
+    (imgMode === 'pair' ? `<div class="pair"><figure class="was">${diagram(0)}<figcaption><b>이전 v2</b><span>182 KB</span></figcaption></figure><figure class="now">${diagram(1)}<figcaption><b>현재 v3</b><span>196 KB</span></figcaption></figure></div>`
+      : `<div class="swipe">${diagram(1)}<div class="top">${diagram(0)}</div><div class="handle"></div></div><div class="swipe-ctl"><span>이전</span><input type="range" min="0" max="100" value="50" aria-label="이전과 현재 경계"><span>현재</span></div>`) +
+    `<p class="note" style="margin-top:10px">점선 상자가 바뀐 영역입니다. history DB 상자와 연결선이 추가되었습니다.</p>`;
+  if (d.kind === 'deleted') return `<div class="band quiet" style="border-radius:4px;border:1px solid var(--line)">${icon('trash')}<span>휴지통을 거치지 않고 외부에서 삭제되었습니다.</span></div>
+    <dl class="facts"><dt>종류</dt><dd>ELF 오브젝트 (바이너리)</dd><dt>마지막 크기</dt><dd>22.0 KB</dd><dt>SHA-256</dt><dd>3f9a…c21e</dd><dt>보관 버전</dt><dd>v3 · ${hms(f.mtime - 60000)}</dd></dl>
+    <p class="note" style="margin-top:12px">바이너리 파일이라 내용 비교 대신 크기와 해시를 보여 줍니다.</p>
+    <div class="insp-actions"><button class="btn primary">${icon('restore')}v3 복원</button></div>`;
+  if (f.ev === 'CREATE') return `<p class="note">새로 만들어진 파일이라 비교할 이전 버전이 없습니다. 첫 버전 내용을 보여 줍니다.</p><div class="diff" style="margin-top:10px">` +
+    (f.lines || []).map((t, i) => `<div class="a"><span class="ln"></span><span class="ln">${i + 1}</span><span class="g">+</span><span>${esc(t) || ' '}</span></div>`).join('') + `</div>`;
+  return `<p class="note">이 세션에서 바뀌지 않았습니다. 마지막 변경은 <span class="num">${when(f.mtime)}</span>입니다.</p><div class="insp-actions"><button class="btn">전체 이력</button></div>`;
+}
+
+// 로그
+const evGroup = { CREATE: 'cd', DELETE: 'cd', MODIFY: 'mod', MOVE: 'mv', ATTRIB: 'attr' };
+const evEl = document.getElementById('events');
+function logHTML(e, fresh) {
+  const d = evDir(e.ev, e.dir);
+  return `<tr data-t="${e.t}" class="${fresh ? 'fresh' : ''}" data-file="${e.file || ''}"><td class="t">${hmsm(e.t)}</td><td class="e ${d}">${mark(e.ev, e.dir)} ${e.ev}</td><td>${esc(e.path)}</td><td class="x ${d === 'flat' ? '' : d}">${esc(e.x)}</td></tr>`;
+}
+const visible = e => (logFilter === 'all' || evGroup[e.ev] === logFilter) && (!logQuery || e.path.toLowerCase().includes(logQuery));
+function renderLog() { evEl.innerHTML = events.filter(visible).map(e => logHTML(e)).join(''); }
+function pushLog(e) {
+  events.unshift(e); if (events.length > 500) events.pop();
+  if (visible(e)) { evEl.insertAdjacentHTML('afterbegin', logHTML(e, !reduced)); if (evEl.rows.length > 500) evEl.deleteRow(-1); }
+  const k = { CREATE: '생성', MODIFY: '수정', DELETE: '삭제', MOVE: '이동', ATTRIB: '속성' }[e.ev]; tally[k]++; renderTally();
+  const n = events.filter(x => now() - x.t < 60000).length; document.getElementById('m-rate').textContent = n;
+}
+evEl.addEventListener('click', e => { const tr = e.target.closest('tr'); if (tr && tr.dataset.file && byId(tr.dataset.file)) select(tr.dataset.file, true); });
+document.querySelectorAll('.chip').forEach(c => c.addEventListener('click', () => {
+  document.querySelectorAll('.chip').forEach(x => x.setAttribute('aria-pressed', x === c)); logFilter = c.dataset.f; renderLog();
+}));
+document.getElementById('log-q').addEventListener('input', e => { logQuery = e.target.value.trim().toLowerCase(); renderLog(); });
+function renderTally() {
+  const dir = { 생성: 'up', 수정: 'up', 삭제: 'down', 이동: 'flat', 속성: 'flat' }, m = { 생성: '●', 수정: '▲', 삭제: '✕', 이동: '→', 속성: '◦' };
+  document.getElementById('tally').innerHTML = Object.entries(tally).map(([k, v]) => `<dt>${k}</dt><dd class="${dir[k]}"><i>${m[k]}</i>${v}</dd>`).join('');
+}
+[[52, 'MODIFY', 'down', 'src/normalizer.c', '−1.1 KB'], [40, 'MODIFY', 'up', 'architecture.png', '+14.0 KB', 'arch'], [31, 'ATTRIB', '', 'src/main.c', '644 → 755'],
+ [25, 'DELETE', '', 'tmp_scan.o', '22.0 KB', 'tmp'], [22, 'MOVE', '', 'notes.md → docs/notes.md', 'cookie 2291', 'docs'], [17, 'CREATE', '', 'src/event_queue.h', '1.2 KB'],
+ [15, 'MODIFY', 'up', 'src/watcher.c', '+312 B', 'src'], [5, 'MODIFY', 'up', 'README.md', '+240 B', 'readme'], [2, 'MODIFY', 'up', 'build.log', '+1.2 KB', 'build-log']]
+  .forEach(([s, ev, dir, path, x, file]) => events.unshift({ t: ago(s), ev, dir, path, x, file }));
+document.getElementById('ovf-t').textContent = hms(ago(190));
+document.getElementById('ovf-x').onclick = e => { e.currentTarget.parentElement.hidden = true; };
+
+// 외부 변경 시뮬레이터 (시그니처: 틱 플래시 → 변동 유지 → 로그 맨 위)
+const script = [
+  { file: 'build-log', ev: 'MODIFY', change: 980 },
+  { file: 'cmake', ev: 'MODIFY', change: -38 },
+  { path: 'src/watcher.c', ev: 'MODIFY', change: 128, tree: 'src' },
+  { file: 'todo', ev: 'CREATE', name: 'TODO.md', size: 312, lines: ['# 이번 주', '', '- [ ] OVERFLOW 재검사 테스트', '- [ ] 변경 내용 패널 GTK 바인딩', '- [x] 데모 시나리오 작성'] },
+  { file: 'arch', ev: 'MODIFY', change: 2048 },
+  { file: 'build-log', ev: 'MODIFY', change: 1410 },
+  { file: 'gitignore', ev: 'ATTRIB', x: '644 → 600' },
+  { file: 'readme', ev: 'MODIFY', change: 64 },
+];
+let step = 0;
+function fire() {
+  const s = script[step++ % script.length], t = now();
+  if (s.path) { pushLog({ t, ev: s.ev, dir: s.change < 0 ? 'down' : 'up', path: s.path, x: signed(s.change), file: s.tree }); return; }
+  let f = byId(s.file);
+  if (!f && s.ev === 'CREATE') { f = { id: s.file, name: s.name, kind: 'doc', size: s.size, perm: 'rw-r--r--', lines: s.lines }; files.push(f); }
+  if (!f) return;
+  const dir = s.change < 0 ? 'down' : 'up';
+  f.ev = s.ev; f.dir = s.ev === 'ATTRIB' ? 'flat' : dir; f.mtime = t; f.recent = s.ev !== 'ATTRIB';
+  if (s.change) { f.size += s.change; f.change = s.change; }
+  if (s.ev === 'ATTRIB') f.perm = 'rw-------';
+  if (D[f.id] && D[f.id].base) D[f.id].base = 2 + Math.round(Math.random() * 40);
+  renderRows();
+  const r = rowEl(f.id), d = evDir(f.ev, f.dir);
+  if (r && d !== 'flat' && !reduced) { r.classList.add(`tick-${d === 'down' ? 'down' : 'up'}`); }
+  clearTimeout(f.timer); f.timer = setTimeout(() => { f.recent = false; const el = rowEl(f.id); if (el) el.classList.remove('recent-up', 'recent-down', 'tick-up', 'tick-down'); }, 12000);
+  pushLog({ t, ev: s.ev, dir: f.dir, path: f.name, x: s.x || (s.ev === 'CREATE' ? kb(f.size) : signed(s.change)), file: f.id });
+  if (f.id === selected) renderInsp();
+  document.getElementById('m-lat').textContent = `${30 + Math.round(Math.random() * 14)}ms`;
+}
+// 삭제된 행은 잠시 취소선으로 남았다가 빠진다
+setTimeout(() => { const t = byId('tmp'); if (!t || selected === 'tmp') return; const r = rowEl('tmp'); if (r) r.classList.add('leaving');
+  setTimeout(() => { files.splice(files.indexOf(t), 1); renderRows(); }, reduced ? 0 : 600); }, 30000);
+
+// 컨텍스트 메뉴, 토스트
+const menu = document.getElementById('menu');
+function openMenu(x, y) { menu.hidden = false; menu.style.left = Math.min(x, innerWidth - 240) + 'px'; menu.style.top = Math.min(y, innerHeight - menu.offsetHeight - 8) + 'px'; menu.querySelector('button').focus(); }
+rowsEl.addEventListener('contextmenu', e => { const tr = e.target.closest('tr'); if (!tr) return; e.preventDefault(); select(tr.dataset.id); openMenu(e.clientX, e.clientY); });
+document.addEventListener('click', e => { if (!menu.contains(e.target)) menu.hidden = true; });
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && !menu.hidden) { menu.hidden = true; rowEl(selected)?.focus(); }
+  if (e.key === 'E' && e.shiftKey && !e.target.closest('input')) fire();
+});
+menu.addEventListener('keydown', e => { const b = [...menu.querySelectorAll('button')], i = b.indexOf(document.activeElement);
+  if (e.key === 'ArrowDown') { e.preventDefault(); b[(i + 1) % b.length].focus(); } if (e.key === 'ArrowUp') { e.preventDefault(); b[(i - 1 + b.length) % b.length].focus(); } });
+menu.addEventListener('click', e => { const a = e.target.closest('button')?.dataset.a; menu.hidden = true;
+  if (a === 'trash') { const f = byId(selected); toast(`${f.name}을 휴지통으로 옮겼습니다`); }
+  if (a === 'changes') { app.classList.remove('no-insp'); document.getElementById('t-insp').setAttribute('aria-pressed', 'true'); } });
+let tt; function toast(msg) { const t = document.getElementById('toast'); document.getElementById('toast-msg').textContent = msg; t.classList.add('on'); clearTimeout(tt); tt = setTimeout(() => t.classList.remove('on'), 5000); }
+document.getElementById('toast-undo').onclick = () => document.getElementById('toast').classList.remove('on');
+const app = document.getElementById('app');
+document.getElementById('t-insp').addEventListener('click', e => { const on = app.classList.toggle('no-insp'); e.currentTarget.setAttribute('aria-pressed', !on); });
+
+// 상태 미리보기
+const band = document.getElementById('list-band');
+function stale() { document.querySelectorAll('#tree .cnt').forEach(c => c.remove()); document.querySelector('.ovf').hidden = true; }
+function stateView() {
+  const B = (cls, ic, msg, act) => `<div class="band ${cls}" role="status">${icon(ic)}<span>${msg}</span>${act ? `<button class="btn">${act}</button>` : ''}</div>`;
+  if (STATE === 'empty') { files.length = 0; renderRows(); rowsEl.innerHTML = `<tr><td colspan="6" style="height:auto;border:0;white-space:normal"><div class="empty"><h3>이 폴더는 비어 있습니다</h3><p>감시 중이라 터미널이나 IDE에서 파일을 만들면 여기에 바로 나타납니다. 예: <code>touch notes.md</code></p><button class="btn">새 파일</button> <button class="btn">새 폴더</button></div></td></tr>`; return true; }
+  if (STATE === 'loading') { rowsEl.innerHTML = Array.from({ length: 9 }, (_, i) => `<tr class="skel"><td><span style="width:${40 + (i * 37) % 45}%"></span></td><td><span></span></td><td><span></span></td><td><span></span></td><td><span></span></td><td><span></span></td></tr>`).join(''); document.getElementById('st-count').textContent = '불러오는 중… 3,412개'; return true; }
+  if (STATE === 'error') { selected = null; stale(); events.length = 0; Object.keys(tally).forEach(k => tally[k] = 0); renderTally(); evEl.innerHTML = '<tr><td colspan="4" style="font-family:var(--sans);color:var(--ink-2)">이 폴더는 읽을 수 없어 감시 이벤트가 없습니다.</td></tr>'; document.getElementById('m-rate').textContent = '0'; band.innerHTML = B('', 'warn', 'filescope를 읽을 권한이 없습니다. 소유자는 root, 권한은 drwx------입니다.', '권한 보기'); rowsEl.innerHTML = `<tr><td colspan="6" style="height:auto;border:0;white-space:normal"><div class="empty"><h3>내용을 보여 줄 수 없습니다</h3><p>FileScope는 root 권한 없이 실행되므로 이 폴더를 읽거나 감시할 수 없습니다. 소유자에게 읽기 권한을 받거나 다른 폴더를 여세요.</p><button class="btn">상위 폴더로 이동</button></div></td></tr>`; document.getElementById('st-count').textContent = '읽을 수 없음'; return true; }
+  if (STATE === 'unwatched') { band.innerHTML = B('quiet', 'warn', '이 폴더는 감시하지 않습니다. 바깥에서 생긴 변경이 목록과 로그에 나타나지 않습니다.', '감시 시작'); return false; }
+  if (STATE === 'gone') { stale(); document.querySelector('.list').classList.add('stale'); band.innerHTML = B('', 'warn', '감시하던 폴더 filescope가 바깥에서 삭제되었습니다(DELETE_SELF). 목록은 마지막 상태입니다.', '상위 폴더로 이동'); return false; }
+  return false;
+}
+renderTally(); renderLog();
+if (!stateView()) { renderRows(); renderInsp(); } else { renderInsp(); }
+if (!STATIC && !STATE) setInterval(fire, 3500);
+})();
+</script>
+</body>
+</html>

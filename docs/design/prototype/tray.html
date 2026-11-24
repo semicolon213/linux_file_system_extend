@@ -1,0 +1,274 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FileScope 트레이</title>
+<!--
+  FileScope 트레이 메뉴 + 요약 창 디자인 시안 (GTK3 구현 기준). 토큰은 DESIGN.md / main-window.html과 같다.
+  미리보기: ?view=menu | summary | paused | empty | overflow   ·   ?static=1 로 시뮬레이터 정지
+  네이티브 메뉴(AppIndicator → GtkMenu)는 시스템 Yaru 테마가 그린다. 여기서는 위치와 항목 구성만 확정하며 모양은 근사치다.
+-->
+<style>
+:root{
+  --bg:#10151c; --bg-2:#141b24; --raise:#18202a; --hover:#1c2632; --line:#263241; --line-soft:#1b2430;
+  --ink:#e6e9ee; --ink-2:#b9c1cc; --dim:#8a94a3;
+  --up:#f0525a; --up-wash:rgba(240,82,90,.11); --up-flash:rgba(240,82,90,.42);
+  --down:#4d9bff; --down-wash:rgba(77,155,255,.11); --down-flash:rgba(77,155,255,.40);
+  --sel:#f5c84b; --sel-wash:rgba(245,200,75,.10); --line-float:#33435a;
+  --sans:"Ubuntu","Noto Sans KR","Noto Sans CJK KR","Cantarell",system-ui,sans-serif;
+  --mono:"Ubuntu Mono","Noto Sans Mono","DejaVu Sans Mono",ui-monospace,monospace;
+  --ease:cubic-bezier(.16,1,.3,1);
+  /* 시스템이 그리는 영역(GNOME 상단 표시줄, Yaru 메뉴): 근사치 */
+  --sys-panel:#000; --sys-menu:#2c2c2c; --sys-menu-hover:#3d3d3d; --sys-ink:#f6f6f6; --sys-dim:#a8a8a8;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;color:var(--ink);font:13px/1.45 var(--sans)}
+body{background:#1d2330 linear-gradient(160deg,#24304a 0%,#151b27 60%,#10141c 100%);overflow:hidden}
+::selection{background:var(--sel);color:var(--bg)}
+button{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--sel);outline-offset:-2px}
+.ico{width:16px;height:16px;flex:none;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+.num{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.up{color:var(--up)}.down{color:var(--down)}.flat{color:var(--dim)}
+
+/* GNOME 상단 표시줄 (시스템) */
+.panel{position:fixed;top:0;left:0;right:0;height:32px;background:var(--sys-panel);display:flex;align-items:center;padding:0 10px;color:var(--sys-ink);font-size:14px;z-index:5}
+.panel .act{padding:2px 10px;border-radius:12px}
+.panel .clock{position:absolute;left:50%;transform:translateX(-50%);font-weight:500}
+.panel .tray{margin-left:auto;display:flex;align-items:center;gap:2px}
+.ind{display:inline-flex;align-items:center;justify-content:center;height:26px;min-width:32px;padding:0 6px;border:0;border-radius:13px;background:none;cursor:pointer;color:var(--sys-ink)}
+.ind:hover,.ind[aria-expanded="true"]{background:rgba(255,255,255,.16)}
+.ind svg{width:18px;height:18px}
+.sys-status{display:flex;gap:10px;padding:2px 10px;border-radius:13px;color:var(--sys-ink)}
+.sys-status svg{width:16px;height:16px}
+
+/* 트레이 아이콘: 단색 symbolic, 상태는 모양으로 */
+.ti .badge-dot{fill:currentColor;stroke:none}
+.ti .badge-pause,.ti .badge-warn{display:none}
+.ti.paused .badge-dot,.ti.warn .badge-dot{display:none}
+.ti.paused .badge-pause,.ti.warn .badge-warn{display:inline}
+
+/* 네이티브 메뉴 (시스템 Yaru 근사치) */
+.sysmenu{position:fixed;top:38px;z-index:6;width:300px;padding:6px;background:var(--sys-menu);color:var(--sys-ink);border-radius:12px;box-shadow:0 6px 20px rgba(0,0,0,.5);font:14px/1.4 "Ubuntu","Noto Sans KR",system-ui,sans-serif}
+.sysmenu[hidden]{display:none}
+.sysmenu button,.sysmenu .info{display:flex;align-items:center;gap:8px;width:100%;padding:7px 12px;border:0;background:none;border-radius:6px;text-align:left;cursor:pointer;color:inherit}
+.sysmenu button:hover{background:var(--sys-menu-hover)}
+.sysmenu .info{cursor:default;color:var(--sys-dim)}
+.sysmenu .t{margin-left:auto;color:var(--sys-dim);font-size:13px}
+.sysmenu :focus-visible{outline:none;background:var(--sys-menu-hover)}
+.tally b.zero{color:var(--dim)}
+.recent li.none{padding:12px 16px 8px;color:var(--ink-2);line-height:1.6;border:0}.recent li.none b{display:block;color:var(--ink);font-size:14px;margin-bottom:2px}
+.sysmenu hr{border:0;border-top:1px solid #444;margin:6px 4px}
+
+/* 요약 창 (FileScope가 그리는 영역) */
+.win{position:fixed;top:48px;right:24px;width:360px;z-index:7;background:var(--bg);border:1px solid var(--line-float);border-radius:6px;box-shadow:0 12px 32px rgba(0,0,0,.55);overflow:hidden;display:flex;flex-direction:column}
+.win[hidden]{display:none}
+.hb{display:flex;align-items:center;height:40px;padding:0 6px 0 14px;background:var(--raise);border-bottom:1px solid var(--line)}
+.hb h1{font-size:13px;font-weight:600}
+.hb .x{margin-left:auto;display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border:0;border-radius:4px;background:none;color:var(--dim);cursor:pointer}
+.hb .x:hover{background:var(--hover);color:var(--ink)}
+.status{display:flex;align-items:baseline;gap:10px;padding:16px 16px 12px}
+.status .state{display:flex;align-items:center;gap:8px;font-size:16px;font-weight:600}
+.status .dot{width:9px;height:9px;border-radius:50%;background:var(--ink);align-self:center}
+.status .state .ico{width:18px;height:18px}
+.status .rate{margin-left:auto;color:var(--dim);font-size:12px}
+.status .rate b{font-family:var(--mono);font-size:14px;color:var(--ink);font-weight:600;margin-left:4px}
+.paths{list-style:none;border-top:1px solid var(--line-soft);border-bottom:1px solid var(--line-soft)}
+.paths li{display:flex;align-items:center;gap:10px;padding:7px 16px}
+.paths li+li{border-top:1px solid var(--line-soft)}
+.paths .ico{color:var(--dim)}
+.paths .p{font-family:var(--mono);font-size:13px;color:var(--ink)}
+.paths .m{margin-left:auto;color:var(--dim);font-size:12px}
+.tally{display:grid;grid-template-columns:repeat(4,1fr);padding:12px 16px;border-bottom:1px solid var(--line)}
+.tally div{display:flex;flex-direction:column;gap:1px}
+.tally span{font-size:11px;color:var(--dim)}
+.tally b{font-family:var(--mono);font-size:17px;font-weight:600;font-variant-numeric:tabular-nums}
+.tally b i{font-style:normal;font-size:12px;margin-right:4px;vertical-align:1px}
+h2{display:flex;align-items:baseline;font-size:12px;font-weight:600;color:var(--ink-2);padding:14px 16px 6px}
+h2 small{margin-left:auto;font-weight:400;color:var(--dim)}
+.recent{list-style:none}
+.recent li{border-top:1px solid var(--line-soft)}
+.recent li:last-child{border-bottom:1px solid var(--line-soft)}
+.recent button{display:grid;grid-template-columns:64px minmax(0,1fr) auto 64px;align-items:center;gap:8px;width:100%;height:44px;padding:0 16px;border:0;background:none;text-align:left;cursor:pointer;transition:background-color 1.6s ease}
+.recent button:hover{background:var(--hover)}
+.recent .e{font-family:var(--mono);font-size:12px;font-weight:600}
+.recent .n{font-size:14px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.recent .n small{display:block;font-size:11px;font-weight:400;color:var(--dim);font-family:var(--mono);margin-top:-2px}
+.recent .d{font-family:var(--mono);font-size:12px;font-weight:600;text-align:right}
+.recent .t{font-family:var(--mono);font-size:12px;color:var(--dim);text-align:right}
+.recent li.gone .n{text-decoration:line-through;text-decoration-color:var(--down);color:var(--dim)}
+.recent li.recent-up button{background:var(--up-wash)}.recent li.recent-down button{background:var(--down-wash)}
+.recent li.tick-up button{animation:tick-up .6s var(--ease)}.recent li.tick-down button{animation:tick-down .6s var(--ease)}
+@keyframes tick-up{from{background:var(--up-flash)}to{background:var(--up-wash)}}
+@keyframes tick-down{from{background:var(--down-flash)}to{background:var(--down-wash)}}
+.win.paused .recent,.win.paused .tally{opacity:.55}
+.band{display:flex;align-items:flex-start;gap:10px;margin:12px 16px 0;padding:10px 12px;background:var(--raise);border:1px solid var(--line);border-radius:4px;color:var(--ink-2);font-size:12px;line-height:1.5}
+.band .ico{margin-top:1px;color:var(--ink)}
+.empty{padding:20px 16px 8px;color:var(--ink-2);line-height:1.6}
+.empty b{display:block;color:var(--ink);font-size:14px;margin-bottom:4px}
+.foot{display:flex;gap:6px;padding:14px 16px 16px;margin-top:6px}
+.btn{white-space:nowrap;display:inline-flex;align-items:center;justify-content:center;gap:6px;height:30px;padding:0 12px;border:1px solid var(--line);border-radius:4px;background:transparent;cursor:pointer;color:var(--ink-2)}
+.btn:hover{background:var(--hover);color:var(--ink)}
+.btn.primary{margin-left:auto;border-color:var(--ink-2);color:var(--ink)}
+.toast{position:fixed;right:24px;bottom:24px;padding:10px 14px;background:var(--raise);border:1px solid var(--line-float);border-radius:6px;color:var(--ink);opacity:0;transform:translateY(8px);transition:opacity .2s var(--ease),transform .2s var(--ease)}
+.toast.on{opacity:1;transform:none}
+@media (prefers-reduced-motion:reduce){.recent li.tick-up button,.recent li.tick-down button{animation:none}.recent button,.toast{transition:none}}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-folder" viewBox="0 0 16 16"><path d="M1.5 4.5v8h13v-7H7.5L6 4H1.5z"/></symbol>
+  <symbol id="i-x" viewBox="0 0 16 16"><path d="m4 4 8 8M12 4l-8 8"/></symbol>
+  <symbol id="i-pause" viewBox="0 0 16 16"><path d="M5.5 3.5v9M10.5 3.5v9"/></symbol>
+  <symbol id="i-play" viewBox="0 0 16 16"><path d="M5 3.2v9.6L12.5 8z"/></symbol>
+  <symbol id="i-warn" viewBox="0 0 16 16"><path d="M8 1.8 15 14H1zM8 6v3.5M8 11.6v.1"/></symbol>
+  <symbol id="i-open" viewBox="0 0 16 16"><rect x="1.5" y="2.5" width="13" height="11" rx="1"/><path d="M1.5 5.5h13"/></symbol>
+</svg>
+
+<header class="panel" aria-label="GNOME 상단 표시줄 (시스템)">
+  <span class="act">현황</span>
+  <span class="clock num" id="clock">11월 24일 14:32</span>
+  <div class="tray">
+    <button class="ind" id="ind" aria-haspopup="menu" aria-expanded="false" aria-label="FileScope: 감시 중">
+      <svg class="ico ti" id="ti" viewBox="0 0 18 18"><path d="M1.5 5v9.5h15V6.5H8.5L7 5z"/>
+        <circle class="badge-dot" cx="14.5" cy="3.5" r="2.5"/>
+        <path class="badge-pause" d="M13 1.5v4M16 1.5v4" stroke-width="1.6"/>
+        <path class="badge-warn" d="M14.5 1v3.2M14.5 6v.1" stroke-width="1.8"/></svg>
+    </button>
+    <span class="sys-status" aria-hidden="true"><svg class="ico" viewBox="0 0 16 16"><path d="M1.5 6a9.5 9.5 0 0 1 13 0M3.8 8.6a6 6 0 0 1 8.4 0M6.1 11.1a2.6 2.6 0 0 1 3.8 0"/></svg><svg class="ico" viewBox="0 0 16 16"><path d="M2 6v4h3l4 3V3L5 6z"/></svg><svg class="ico" viewBox="0 0 16 16"><rect x="1.5" y="5" width="11" height="6" rx="1"/><path d="M14 7v2"/></svg></span>
+  </div>
+</header>
+
+<div class="sysmenu" id="sysmenu" role="menu" aria-label="FileScope" hidden>
+  <div class="info" id="m-state">감시 중 · 경로 3개</div>
+  <div class="info">~/projects/filescope</div><div class="info">~/notes</div><div class="info">~/.config/app</div>
+  <hr>
+  <div id="m-recent"></div>
+  <hr>
+  <button role="menuitem" id="m-summary">요약 열기</button>
+  <button role="menuitem">메인 창 열기</button>
+  <hr>
+  <button role="menuitem" id="m-pause">감시 일시 정지</button>
+  <button role="menuitem">감시 폴더 변경…</button>
+  <hr>
+  <button role="menuitem">FileScope 종료</button>
+</div>
+
+<section class="win" id="win" role="dialog" aria-labelledby="w-title" hidden>
+  <div class="hb"><h1 id="w-title">FileScope 요약</h1><button class="x" id="w-close" aria-label="요약 닫기"><svg class="ico"><use href="#i-x"/></svg></button></div>
+  <div class="status">
+    <div class="state" id="w-state"><span class="dot"></span>감시 중</div>
+    <div class="rate">최근 1분<b id="w-rate">9</b>건</div>
+  </div>
+  <ul class="paths" aria-label="감시 경로">
+    <li><svg class="ico"><use href="#i-folder"/></svg><span class="p">~/projects/filescope</span><span class="m">하위 폴더 포함</span></li>
+    <li><svg class="ico"><use href="#i-folder"/></svg><span class="p">~/notes</span><span class="m">하위 폴더 포함</span></li>
+    <li><svg class="ico"><use href="#i-folder"/></svg><span class="p">~/.config/app</span><span class="m">이 폴더만</span></li>
+  </ul>
+  <div class="tally" id="tally" aria-label="이번 세션"></div>
+  <div id="w-band"></div>
+  <h2>최근 변경 <small id="hint">눌러서 변경 내용 보기</small></h2>
+  <ul class="recent" id="recent"></ul>
+  <div class="foot">
+    <button class="btn"><svg class="ico"><use href="#i-folder"/></svg>폴더 변경</button>
+    <button class="btn" id="w-pause"><svg class="ico"><use href="#i-pause"/></svg>일시 정지</button>
+    <button class="btn primary"><svg class="ico"><use href="#i-open"/></svg>메인 창</button>
+  </div>
+</section>
+<div class="toast" id="toast" role="status"></div>
+
+<script>
+(() => {
+const q = new URLSearchParams(location.search), VIEW = q.get('view'), STATIC = q.has('static') || !!VIEW;
+const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const pad = n => String(n).padStart(2, '0');
+const hms = t => { const d = new Date(t); return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`; };
+const kb = b => { const a = Math.abs(b); return a < 1024 ? `${a} B` : `${(a / 1024).toFixed(1)} KB`; };
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const ago = s => Date.now() - s * 1000;
+// 이벤트 표기는 메인 창과 같다: 빨강=생성·증가, 파랑=삭제·감소, 회색=이동·속성
+const KIND = { CREATE: ['●', '생성', 'up'], DELETE: ['✕', '삭제', 'down'], MOVE: ['→', '이동', 'flat'], ATTRIB: ['◦', '속성', 'flat'] };
+const look = e => e.ev === 'MODIFY' ? (e.change < 0 ? ['▼', '수정', 'down'] : ['▲', '수정', 'up']) : KIND[e.ev];
+const detail = e => e.ev === 'MODIFY' ? (e.change < 0 ? '−' : '+') + kb(e.change) : e.ev === 'CREATE' ? kb(e.change) : e.ev === 'DELETE' ? kb(e.change) : (e.x || '');
+let events = [
+  { t: ago(2), ev: 'MODIFY', name: 'build.log', dir: 'filescope', change: 1240 },
+  { t: ago(5), ev: 'MODIFY', name: 'README.md', dir: 'filescope', change: 240 },
+  { t: ago(15), ev: 'MODIFY', name: 'watcher.c', dir: 'filescope/src', change: 312 },
+  { t: ago(17), ev: 'CREATE', name: 'event_queue.h', dir: 'filescope/src', change: 1229 },
+  { t: ago(25), ev: 'DELETE', name: 'tmp_scan.o', dir: 'filescope', change: 22528 },
+  { t: ago(52), ev: 'MODIFY', name: 'normalizer.c', dir: 'filescope/src', change: -1126 },
+];
+const tally = { 생성: 12, 수정: 48, 삭제: 5, 이동: 3 };
+let paused = VIEW === 'paused', overflow = VIEW === 'overflow';
+if (VIEW === 'empty') { events = []; Object.keys(tally).forEach(k => tally[k] = 0); }
+
+const recentEl = document.getElementById('recent'), mRecent = document.getElementById('m-recent');
+function rowHTML(e, fresh) {
+  const [g, label, c] = look(e);
+  const cls = [e.ev === 'DELETE' ? 'gone' : '', fresh && c !== 'flat' ? `recent-${c} ${reduced ? '' : 'tick-' + c}` : ''].join(' ');
+  return `<li class="${cls}"><button title="메인 창에서 ${esc(e.name)} 변경 내용 보기"><span class="e ${c}">${g} ${label}</span>` +
+    `<span class="n">${esc(e.name)}<small>~/projects/${esc(e.dir)}</small></span><span class="d ${c}">${detail(e)}</span><span class="t">${hms(e.t)}</span></button></li>`;
+}
+function render() {
+  recentEl.innerHTML = events.length ? events.slice(0, 5).map(e => rowHTML(e)).join('') : '<li class="none"><b>아직 바뀐 파일이 없습니다</b>감시 중인 폴더에서 파일이 만들어지거나 바뀌면 여기에 바로 나타납니다.</li>';
+  document.getElementById('hint').hidden = !events.length;
+  document.getElementById('w-band').innerHTML = paused
+    ? `<div class="band" role="status"><svg class="ico"><use href="#i-pause"/></svg><span>일시 정지 중에는 변경을 기록하지 않습니다. 재개하면 감시 경로를 다시 검사해 놓친 변경을 맞춥니다.</span></div>`
+    : overflow ? `<div class="band" role="status"><svg class="ico"><use href="#i-warn"/></svg><span><b class="num">${hms(ago(40))}</b> 이벤트 대기열이 넘쳤습니다. 놓친 변경이 없도록 감시 경로를 다시 검사해 맞췄습니다.</span></div>` : '';
+  const m = { 생성: ['●', 'up'], 수정: ['▲', 'up'], 삭제: ['✕', 'down'], 이동: ['→', 'flat'] };
+  document.getElementById('tally').innerHTML = Object.entries(tally).map(([k, v]) => `<div><span>${k}</span><b class="${v ? m[k][1] : 'zero'}"><i>${m[k][0]}</i>${v}</b></div>`).join('');
+  mRecent.innerHTML = events.length ? events.slice(0, 3).map(e => { const [g, label] = look(e); return `<button role="menuitem"><span>${g} ${esc(e.name)} ${label}</span><span class="t">${hms(e.t)}</span></button>`; }).join('')
+    : `<div class="info">아직 바뀐 파일이 없습니다</div>`;
+  const st = document.getElementById('w-state');
+  st.innerHTML = paused ? `<svg class="ico"><use href="#i-pause"/></svg>일시 정지됨` : `<span class="dot"></span>감시 중`;
+  document.getElementById('win').classList.toggle('paused', paused);
+  document.getElementById('w-pause').innerHTML = paused ? `<svg class="ico"><use href="#i-play"/></svg>감시 재개` : `<svg class="ico"><use href="#i-pause"/></svg>일시 정지`;
+  document.getElementById('m-pause').textContent = paused ? '감시 재개' : '감시 일시 정지';
+  document.getElementById('m-state').textContent = paused ? '일시 정지됨 · 경로 3개' : '감시 중 · 경로 3개';
+  document.getElementById('ti').classList.toggle('paused', paused);
+  document.getElementById('ti').classList.toggle('warn', overflow && !paused);
+  if (overflow) document.getElementById('m-state').textContent = '대기열 넘침 · 다시 검사함';
+  document.getElementById('ind').setAttribute('aria-label', `FileScope: ${paused ? '일시 정지됨' : '감시 중'}`);
+  document.getElementById('w-rate').textContent = paused || !events.length ? 0 : events.filter(e => Date.now() - e.t < 60000).length;
+}
+const ind = document.getElementById('ind'), menu = document.getElementById('sysmenu'), win = document.getElementById('win');
+function placeMenu() { const r = ind.getBoundingClientRect(); menu.style.left = Math.max(8, Math.min(r.left + r.width / 2 - 150, innerWidth - 308)) + 'px'; }
+function setMenu(open) { menu.hidden = !open; ind.setAttribute('aria-expanded', open); if (open) { placeMenu(); menu.querySelector('button').focus(); } }
+ind.addEventListener('click', e => { e.stopPropagation(); setMenu(menu.hidden); });
+document.addEventListener('click', e => { if (!menu.contains(e.target)) setMenu(false); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') { if (!menu.hidden) { setMenu(false); ind.focus(); } else if (!win.hidden) win.hidden = true; } });
+document.getElementById('m-summary').addEventListener('click', () => { setMenu(false); win.hidden = false; overflow = false; document.getElementById('ti').classList.remove('warn'); /* 확인하면 아이콘 복귀, 안내 띠는 창에 남김 */ document.getElementById('w-close').focus(); });
+document.getElementById('w-close').addEventListener('click', () => { win.hidden = true; ind.focus(); });
+const togglePause = () => { paused = !paused; render(); toast(paused ? '감시를 일시 정지했습니다' : '감시를 재개했습니다. 감시 경로를 다시 검사합니다'); };
+document.getElementById('w-pause').addEventListener('click', togglePause);
+document.getElementById('m-pause').addEventListener('click', () => { setMenu(false); togglePause(); });
+recentEl.addEventListener('click', e => { const b = e.target.closest('button'); if (b) toast('메인 창을 열고 이 파일의 변경 내용을 보여 줍니다'); });
+let tt; function toast(m) { const t = document.getElementById('toast'); t.textContent = m; t.classList.add('on'); clearTimeout(tt); tt = setTimeout(() => t.classList.remove('on'), 3200); }
+
+const script = [
+  { ev: 'MODIFY', name: 'build.log', dir: 'filescope', change: 980 },
+  { ev: 'MODIFY', name: 'CMakeLists.txt', dir: 'filescope', change: -38 },
+  { ev: 'CREATE', name: 'TODO.md', dir: 'filescope', change: 312 },
+  { ev: 'MODIFY', name: 'architecture.png', dir: 'filescope', change: 2048 },
+  { ev: 'DELETE', name: 'core.1234', dir: 'filescope/build', change: 81920 },
+];
+let step = 0;
+function fire() {
+  if (paused) return;
+  const e = { ...script[step++ % script.length], t: Date.now() };
+  events.unshift(e); events = events.slice(0, 50);
+  tally[{ CREATE: '생성', MODIFY: '수정', DELETE: '삭제', MOVE: '이동' }[e.ev]]++;
+  render();
+  recentEl.firstElementChild.outerHTML = rowHTML(e, true);
+  const li = recentEl.firstElementChild; setTimeout(() => li.classList.remove('recent-up', 'recent-down'), 12000);
+}
+const d = new Date(); document.getElementById('clock').textContent = `${d.getMonth() + 1}월 ${d.getDate()}일 ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+render();
+if (VIEW === 'menu') setMenu(true);
+if (['summary', 'paused', 'empty', 'overflow'].includes(VIEW)) win.hidden = false;
+if (!STATIC) setInterval(fire, 4000);
+})();
+</script>
+</body>
+</html>
