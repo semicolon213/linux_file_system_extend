@@ -1,0 +1,5 @@
+add_executable(test_nav test_nav.cpp)
+target_link_libraries(test_nav PRIVATE filescope_nav filescope_test_support)
+filescope_configure_target(test_nav)
+filescope_add_test(nav test_nav)
+set_tests_properties(nav PROPERTIES LABELS unit)
