@@ -15,7 +15,7 @@
   --ink:#e6e9ee; --ink-2:#b9c1cc; --dim:#8a94a3;
   --up:#f0525a; --up-wash:rgba(240,82,90,.11); --up-flash:rgba(240,82,90,.42);
   --down:#4d9bff; --down-wash:rgba(77,155,255,.11); --down-flash:rgba(77,155,255,.40);
-  --sel:#f5c84b; --sel-wash:rgba(245,200,75,.10); --line-float:#33435a;
+  --sel:#f5c84b; --sel-wash:rgba(245,200,75,.10); --line-float:#33435a; --vol-mid:#5f6a7a;
   --add:#3fb950; --add-wash:rgba(63,185,80,.14); --del:#f85149; --del-wash:rgba(248,81,73,.14);
   --sans:"Ubuntu","Noto Sans KR","Noto Sans CJK KR","Cantarell",system-ui,sans-serif;
   --mono:"Ubuntu Mono","Noto Sans Mono","DejaVu Sans Mono",ui-monospace,monospace;
@@ -180,6 +180,27 @@ table{width:100%;border-collapse:collapse;table-layout:fixed}
 .log-main{display:flex;flex-direction:column;min-height:0}
 .log-bar{display:flex;align-items:center;gap:8px;padding:0 12px;height:38px;border-bottom:1px solid var(--line)}
 .log-bar h2{font-size:13px;font-weight:600;margin-right:6px}
+.ptabs{display:flex;align-self:stretch;margin-right:8px}
+.ptabs button{border:0;background:none;padding:0 10px;font-size:13px;font-weight:600;color:var(--dim);cursor:pointer}
+.ptabs button[aria-selected="true"]{color:var(--ink);box-shadow:inset 0 -2px 0 var(--sel)}
+.ptabs button:hover{color:var(--ink)}
+.chart-only{display:flex;align-items:center;gap:8px;flex:1;min-width:0}
+.chart-only[hidden]{display:none}
+.legend{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--ink-2);white-space:nowrap;overflow:hidden}
+.legend .sw{display:inline-block;width:10px;height:10px;border-radius:2px;margin-left:6px}
+.legend .sep{width:1px;height:14px;background:var(--line);margin:0 6px}
+.up-fill{background:var(--up)}.down-fill{background:var(--down)}.mid-fill{background:var(--vol-mid)}
+.chart{position:relative;flex:1;min-height:0}
+.chart svg{display:block;width:100%;height:100%}
+.chart .grid{stroke:var(--line-soft);stroke-width:1}
+.chart .axis{fill:var(--dim);font:11px var(--mono)}
+.chart .now-line{stroke:var(--ink-2);stroke-dasharray:3 3;stroke-width:1}
+.chart .cross{stroke:var(--ink-2);stroke-dasharray:3 3;stroke-width:1}
+.chart .hit{fill:transparent;cursor:crosshair}
+.chart .hit:hover+g .body{stroke:var(--ink);stroke-width:1}
+.tip{position:absolute;pointer-events:none;padding:8px 10px;background:var(--raise);border:1px solid var(--line-float);border-radius:4px;font:12px/1.55 var(--sans);color:var(--ink);white-space:nowrap;box-shadow:0 8px 24px rgba(0,0,0,.45)}
+.tip b{font-family:var(--mono);font-weight:600}
+.tip .num{font-size:12px}
 .chip{height:24px;padding:0 10px;border:1px solid var(--line);border-radius:12px;background:none;color:var(--dim);cursor:pointer;font-size:12px}
 .chip:hover{color:var(--ink)}
 .chip[aria-pressed="true"]{color:var(--ink);border-color:var(--ink-2)}
@@ -321,16 +342,31 @@ table{width:100%;border-collapse:collapse;table-layout:fixed}
   <section class="log" aria-label="이벤트 로그">
     <div class="log-main">
       <div class="log-bar">
-        <h2>이벤트 로그</h2>
+        <div class="ptabs" role="tablist" aria-label="하단 패널">
+          <button role="tab" id="t-log" aria-selected="true" aria-controls="p-log">이벤트 로그</button>
+          <button role="tab" id="t-chart" aria-selected="false" aria-controls="p-chart">변경량 · 1분봉</button>
+        </div>
+        <span class="log-only" style="display:contents">
         <button class="chip" aria-pressed="true" data-f="all">전체</button>
         <button class="chip" aria-pressed="false" data-f="cd">생성·삭제</button>
         <button class="chip" aria-pressed="false" data-f="mod">수정</button>
         <button class="chip" aria-pressed="false" data-f="mv">이동</button>
         <button class="chip" aria-pressed="false" data-f="attr">속성</button>
         <label class="search"><svg class="ico"><use href="#i-search"/></svg><span class="sr">경로로 로그 거르기</span><input id="log-q" placeholder="경로로 거르기"></label>
+        </span>
+        <span class="chart-only" hidden>
+          <span class="legend" aria-label="범례"><i class="sw up-fill"></i>상승(용량 증가) <i class="sw down-fill"></i>하락(용량 감소) <span class="sep"></span>거래량: <i class="sw up-fill"></i>● 생성 <i class="sw mid-fill"></i>▲▼ 수정 <i class="sw down-fill"></i>✕ 삭제</span>
+          <button class="btn" style="margin-left:auto;height:26px">새 창으로</button>
+        </span>
       </div>
+      <div id="p-chart" class="chart" role="tabpanel" aria-labelledby="t-chart" hidden>
+        <svg id="chart-svg" role="img" aria-label="감시 폴더 총용량 1분봉 차트"></svg>
+        <div class="tip" id="chart-tip" hidden></div>
+      </div>
+      <div id="p-log" role="tabpanel" aria-labelledby="t-log" style="display:contents">
       <div class="band quiet ovf" role="status"><svg class="ico"><use href="#i-warn"/></svg><span><span class="num" id="ovf-t">14:29:11</span> 이벤트 대기열이 넘쳤습니다. 놓친 변경이 없도록 filescope를 다시 검사해 맞췄습니다.</span><button class="btn" id="ovf-x">확인</button></div>
       <div class="scroller"><table class="events"><tbody id="events"></tbody></table></div>
+      </div>
     </div>
     <div class="tally">
       <h2>이번 세션</h2>
@@ -624,7 +660,7 @@ const script = [
 let step = 0;
 function fire() {
   const s = script[step++ % script.length], t = now();
-  if (s.path) { pushLog({ t, ev: s.ev, dir: s.change < 0 ? 'down' : 'up', path: s.path, x: signed(s.change), file: s.tree }); return; }
+  if (s.path) { pushLog({ t, ev: s.ev, dir: s.change < 0 ? 'down' : 'up', path: s.path, x: signed(s.change), file: s.tree }); addToCandle(s.ev, s.change); return; }
   let f = byId(s.file);
   if (!f && s.ev === 'CREATE') { f = { id: s.file, name: s.name, kind: 'doc', size: s.size, perm: 'rw-r--r--', lines: s.lines }; files.push(f); }
   if (!f) return;
@@ -639,6 +675,7 @@ function fire() {
   clearTimeout(f.timer); f.timer = setTimeout(() => { f.recent = false; const el = rowEl(f.id); if (el) el.classList.remove('recent-up', 'recent-down', 'tick-up', 'tick-down'); }, 12000);
   pushLog({ t, ev: s.ev, dir: f.dir, path: f.name, x: s.x || (s.ev === 'CREATE' ? kb(f.size) : signed(s.change)), file: f.id });
   if (f.id === selected) renderInsp();
+  addToCandle(s.ev, s.ev === 'CREATE' ? f.size : (s.change || 0));
   document.getElementById('m-lat').textContent = `${30 + Math.round(Math.random() * 14)}ms`;
 }
 // 삭제된 행은 잠시 취소선으로 남았다가 빠진다
@@ -676,6 +713,85 @@ function stateView() {
   if (STATE === 'gone') { stale(); document.querySelector('.list').classList.add('stale'); band.innerHTML = B('', 'warn', '감시하던 폴더 filescope가 바깥에서 삭제되었습니다(DELETE_SELF). 목록은 마지막 상태입니다.', '상위 폴더로 이동'); return false; }
   return false;
 }
+// 변경량 1분봉: 감시 폴더 총용량을 시세처럼 본다 (시=분 시작, 고/저=분 안 극값, 종=분 끝). 거래량=이벤트 수(생성·수정·삭제).
+const N = 30, svg = document.getElementById('chart-svg'), tip = document.getElementById('chart-tip');
+const mb = b => `${(b / 1048576).toFixed(3)} MB`;
+let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+const minuteOf = t => Math.floor(t / 60000) * 60000;
+const candles = []; let level = 191262310;
+for (let i = N - 1; i >= 0; i--) {
+  const c = { t: minuteOf(Date.now()) - i * 60000, o: level, h: level, l: level, c: level, cr: 0, md: 0, dl: 0 };
+  const n = Math.floor(rnd() * 9);
+  for (let k = 0; k < n; k++) {
+    const r = rnd(), kind = r < .25 ? 'cr' : r < .8 ? 'md' : 'dl';
+    const d = kind === 'cr' ? rnd() * 9000 : kind === 'dl' ? -rnd() * 12000 : (rnd() - .4) * 5000;
+    level += Math.round(d); c[kind]++; c.h = Math.max(c.h, level); c.l = Math.min(c.l, level);
+  }
+  c.c = level; candles.push(c);
+}
+let hover = -1;
+function addToCandle(ev, change) {
+  const m = minuteOf(Date.now());
+  let c = candles[candles.length - 1];
+  if (c.t !== m) { c = { t: m, o: level, h: level, l: level, c: level, cr: 0, md: 0, dl: 0 }; candles.push(c); if (candles.length > N) candles.shift(); }
+  if (change) level += change;
+  c.c = level; c.h = Math.max(c.h, level); c.l = Math.min(c.l, level);
+  if (ev === 'CREATE') c.cr++; else if (ev === 'DELETE') c.dl++; else if (ev === 'MODIFY') c.md++;
+  if (!document.getElementById('p-chart').hidden) renderChart();
+}
+function renderChart() {
+  const W = svg.clientWidth, H = svg.clientHeight; if (!W || !H) return;
+  const L = 12, R = 92, T = 12, B = 22, pw = W - L - R, ph = (H - T - B) * .7, vt = T + ph + 8, vh = H - B - vt;
+  const hi = Math.max(...candles.map(c => c.h)), lo = Math.min(...candles.map(c => c.l)), pad = (hi - lo) * .08 || 4096;
+  const y = v => T + (hi + pad - v) / (hi - lo + 2 * pad) * ph;
+  const vmax = Math.max(1, ...candles.map(c => c.cr + c.md + c.dl)), vy = n => n / vmax * vh;
+  const step = pw / N, bw = Math.max(3, Math.min(12, step * .56));
+  let s = '';
+  for (let i = 0; i <= 3; i++) { const v = lo - pad + (hi - lo + 2 * pad) * i / 3, yy = y(v);
+    s += `<line class="grid" x1="${L}" x2="${L + pw}" y1="${yy}" y2="${yy}"/><text class="axis" x="${L + pw + 8}" y="${yy + 4}">${mb(v)}</text>`; }
+  s += `<line class="grid" x1="${L}" x2="${L + pw}" y1="${vt + vh}" y2="${vt + vh}"/>`;
+  candles.forEach((c, i) => {
+    const x = L + step * (i + .5), up = c.c >= c.o, col = c.c === c.o ? 'var(--vol-mid)' : up ? 'var(--up)' : 'var(--down)';
+    const top = y(Math.max(c.o, c.c)), bot = y(Math.min(c.o, c.c));
+    if (i % 5 === 0 || i === N - 1) s += `<text class="axis" x="${x}" y="${H - 6}" text-anchor="middle">${hms(c.t).slice(0, 5)}</text>`;
+    s += `<rect class="hit" data-i="${i}" x="${x - step / 2}" y="${T}" width="${step}" height="${H - T - B}"/><g>`;
+    if (!(c.cr + c.md + c.dl)) { s += '</g>'; return; } // 이벤트 없는 분은 봉을 그리지 않는다
+    s += `<line x1="${x}" x2="${x}" y1="${y(c.h)}" y2="${y(c.l)}" stroke="${col}" stroke-width="1.5"/>`;
+    s += `<rect class="body" x="${x - bw / 2}" y="${top}" width="${bw}" height="${Math.max(1.5, bot - top)}" rx="1" fill="${col}"/>`;
+    let vb = vt + vh;
+    [['cr', 'var(--up)'], ['md', 'var(--vol-mid)'], ['dl', 'var(--down)']].forEach(([k, f]) => { const hh = vy(c[k]); if (!hh) return;
+      vb -= hh; s += `<rect x="${x - bw / 2}" y="${vb}" width="${bw}" height="${Math.max(1, hh - 2)}" fill="${f}" opacity=".85"/>`; });
+    s += `</g>`;
+  });
+  const last = candles[candles.length - 1], ly = y(last.c);
+  s += `<line class="now-line" x1="${L}" x2="${L + pw}" y1="${ly}" y2="${ly}"/><rect x="${L + pw + 2}" y="${ly - 9}" width="${R - 4}" height="18" rx="2" fill="var(--ink)"/><text x="${L + pw + 8}" y="${ly + 4}" style="font:600 11px var(--mono);fill:var(--bg)">${mb(last.c)}</text>`;
+  if (hover >= 0) { const x = L + step * (hover + .5); s += `<line class="cross" x1="${x}" x2="${x}" y1="${T}" y2="${vt + vh}"/>`; }
+  svg.innerHTML = s;
+  if (hover >= 0) showTip(hover, L + step * (hover + .5), W);
+}
+function showTip(i, x, W) {
+  const c = candles[i], d = c.c - c.o, dir = d > 0 ? 'up' : d < 0 ? 'down' : 'flat';
+  tip.innerHTML = `<b>${hms(c.t).slice(0, 5)}</b> · 종 <b>${mb(c.c)}</b> <span class="${dir} num">${d > 0 ? '▲' : d < 0 ? '▼' : '—'} ${d ? signed(d) : '0 B'}</span><br>` +
+    `<span class="num">시 ${mb(c.o)} / 고 ${mb(c.h)} / 저 ${mb(c.l)}</span><br>● 생성 ${c.cr} · ▲▼ 수정 ${c.md} · ✕ 삭제 ${c.dl}`;
+  tip.hidden = false; const tw = tip.offsetWidth; tip.style.left = Math.min(Math.max(8, x + 12), W - tw - 96) + 'px'; tip.style.top = '10px';
+}
+svg.addEventListener('mousemove', e => { const r = e.target.closest('.hit'); const i = r ? +r.dataset.i : -1; if (i !== hover) { hover = i; renderChart(); } });
+svg.addEventListener('mouseleave', () => { hover = -1; tip.hidden = true; renderChart(); });
+svg.tabIndex = 0;
+svg.addEventListener('keydown', e => { if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') { e.preventDefault(); hover = hover < 0 ? N - 1 : Math.max(0, Math.min(N - 1, hover + (e.key === 'ArrowLeft' ? -1 : 1))); renderChart(); } if (e.key === 'Escape') { hover = -1; tip.hidden = true; renderChart(); } });
+svg.addEventListener('blur', () => { hover = -1; tip.hidden = true; renderChart(); });
+new ResizeObserver(() => renderChart()).observe(svg);
+function showPanel(chart) {
+  document.getElementById('t-log').setAttribute('aria-selected', !chart); document.getElementById('t-chart').setAttribute('aria-selected', chart);
+  document.getElementById('p-log').style.display = chart ? 'none' : 'contents'; document.getElementById('p-chart').hidden = !chart;
+  document.querySelector('.log-only').style.display = chart ? 'none' : 'contents'; document.querySelector('.chart-only').hidden = !chart;
+  if (chart) renderChart();
+}
+document.getElementById('t-log').onclick = () => showPanel(false);
+document.getElementById('t-chart').onclick = () => showPanel(true);
+document.querySelector('.ptabs').addEventListener('keydown', e => { if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') { const c = document.getElementById('t-chart').getAttribute('aria-selected') !== 'true'; showPanel(c); document.getElementById(c ? 't-chart' : 't-log').focus(); } });
+if (q.get('panel') === 'chart') { showPanel(true); if (q.has('hover')) { hover = +q.get('hover'); } }
+
 renderTally(); renderLog();
 if (!stateView()) { renderRows(); renderInsp(); } else { renderInsp(); }
 if (!STATIC && !STATE) setInterval(fire, 3500);
