@@ -1,0 +1,5 @@
+add_executable(test_dash test_dash.cpp)
+target_link_libraries(test_dash PRIVATE filescope_dash filescope_test_support)
+filescope_configure_target(test_dash)
+filescope_add_test(test_dash test_dash)
+set_tests_properties(test_dash PROPERTIES LABELS unit)
