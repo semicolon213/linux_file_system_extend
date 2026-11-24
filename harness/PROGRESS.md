@@ -10,8 +10,8 @@ Coordinator가 갱신한다. 작업별 ID, 담당, 기준 SHA, 상태, 차단 �
 | 디자인 (메인 창, 트레이) | APPROVED (사용자 확정, 커밋 6d621d5). 루트 PRODUCT.md·DESIGN.md, docs/design/prototype. 언어 변경과 무관하게 유효 |
 | 빌드·테스트 하네스 | R0-002 C++ 전환 VERIFY (b7ca5d3) |
 | R1-T01 core, R1-T02 job, R1-T05 nav, R1-T07 dash, R1-T04 mon | VERIFY (1bdb270, 91ba40b, 2eab368, 08424c7, 4cc1116). 개발자 게이트 통과, 묶음 QA 대기 |
-| R1-T03 fs | IN_PROGRESS (Codex) |
-| R1-T06 ui | BACKLOG (T03 이후) |
+| R1-T03 fs | VERIFY (74eb5ae). 병합 후 게이트 0, tsan 5회 0 |
+| R1-T06 ui | IN_PROGRESS (Codex, 기준 f25513f). E-10 tsan 안정화 작업 병행 |
 | UI 및 고급 기능 (R2~) | PLANNED |
 
 ### 이력
@@ -22,6 +22,7 @@ Coordinator가 갱신한다. 작업별 ID, 담당, 기준 SHA, 상태, 차단 �
 - 2026-11-24: 문서를 핵심 문서 체계로 통합(AGENTS.md 목차, docs/ 6개, harness/ 4개). 옛 문서 이름 대응은 docs/ARCHITECTURE.md §8.
 - 2026-11-24: 구현 언어를 C++17 + gtkmm-3.0으로 전환(사용자 결정, 수업 요구사항). ADR-0007·0008, docs/DESIGN.md 인터페이스 C++ 판, ARCHITECTURE·ENGINEERING·TESTING 갱신. 작업 재편: R0-002 신설(BLOCKED, gtkmm 설치 대기), R1-T01/T02/T05는 C++ 포팅, R1-T03/T04/T07의 C 시도는 중단·폐기 후 BACKLOG.
 - 2026-11-24: C++ 판 R0-002, R1-T01/T02/T05/T07 병합(VERIFY). R1-T04 mon 병합(4cc1116, 병합 후 build/test/integration/format-check/lint/architecture/asan/ubsan 0; tsan은 nav 테스트 1회 GLib 내부 경합 보고 후 3회 재실행 모두 0, E-10).
+- 2026-11-24: R1-T03 fs 병합(74eb5ae, 작업자 보고는 tsan의 nav 간헐 실패(E-10)로 failed, 병합 후 Coordinator 재실행 게이트 0·tsan 5회 0). R1-T06 ui 착수, E-10 수정 작업 병행.
 
 ## 2. 요구사항 추적표
 
