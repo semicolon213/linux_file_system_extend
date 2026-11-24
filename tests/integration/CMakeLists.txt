@@ -1,9 +1,9 @@
-file(GLOB integration_sources CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/test_*.c")
+file(GLOB integration_sources CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/test_*.cpp")
 
 foreach(source IN LISTS integration_sources)
   get_filename_component(target ${source} NAME_WE)
   if(NOT target MATCHES "^test_([^_]+)_")
-    message(FATAL_ERROR "Integration test name must be test_<module>_<topic>.c: ${source}")
+    message(FATAL_ERROR "Integration test name must be test_<module>_<topic>.cpp: ${source}")
   endif()
   set(module ${CMAKE_MATCH_1})
   if(NOT TARGET filescope_${module})

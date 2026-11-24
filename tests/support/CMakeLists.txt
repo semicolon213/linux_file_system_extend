@@ -1,5 +1,4 @@
-add_library(filescope_test_support STATIC test_support.c)
+add_library(filescope_test_support STATIC test_support.cpp)
 target_include_directories(filescope_test_support PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
-target_compile_definitions(filescope_test_support PRIVATE _DEFAULT_SOURCE)
-target_link_libraries(filescope_test_support PUBLIC PkgConfig::GLIB)
+target_link_libraries(filescope_test_support PUBLIC PkgConfig::GLIBMM PkgConfig::GIOMM)
 filescope_configure_target(filescope_test_support)

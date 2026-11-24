@@ -8,10 +8,10 @@ test: build
 	ctest --preset debug
 
 format-check:
-	clang-format --dry-run --Werror $$(find src tests -type f \( -name '*.c' -o -name '*.h' \) -print)
+	clang-format --dry-run --Werror $$(find src tests -type f \( -name '*.cpp' -o -name '*.hpp' \) -print)
 
 lint: build
-	clang-tidy -p build/debug $$(find src tests -type f -name '*.c' -print)
+	clang-tidy -p build/debug $$(find src tests -type f \( -name '*.cpp' -o -name '*.hpp' \) -print)
 
 architecture:
 	./scripts/check-architecture.sh

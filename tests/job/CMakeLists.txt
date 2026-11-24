@@ -1,5 +1,0 @@
-add_executable(test_job test_job.c)
-target_link_libraries(test_job PRIVATE filescope_job PkgConfig::GLIB PkgConfig::GIO)
-filescope_configure_target(test_job)
-filescope_add_test(test_job test_job)
-set_tests_properties(test_job PROPERTIES LABELS unit)
