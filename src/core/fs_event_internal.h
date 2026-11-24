@@ -26,8 +26,13 @@ struct FsEvent {
     guint64 size;
     gint64 mtime_ns;
     guint32 mode;
+    gboolean size_delta_known;
+    gint64 size_delta;
+    gboolean root_total_known;
+    guint64 root_total;
 };
 
+/* Deep-copies borrowed source and its strings into a new event with one reference. */
 FsEvent *fs_event_new_internal(const FsEvent *source);
 
 G_END_DECLS

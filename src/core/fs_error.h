@@ -32,8 +32,11 @@ typedef enum {
 } FsErrorCode;
 
 GQuark fs_error_quark(void);
+/* [any] Maps an errno value to the public FS_ERROR code. */
 FsErrorCode fs_error_code_from_errno(int errnum);
+/* [any] Sets error to FS_ERROR with a display-safe path and always returns FALSE. */
 gboolean fs_set_error_from_errno(GError **error, int errnum, const char *op, const char *path);
+/* [any] Consumes src and maps it to FS_ERROR in dest; dest may be NULL. */
 void fs_propagate_gio_error(GError **dest, GError *src);
 
 G_END_DECLS

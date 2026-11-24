@@ -59,6 +59,8 @@ static void test_architecture_rejects_core_dependencies(void) {
     g_assert_false(run_architecture_check(root));
     write_source(root, "mon/fs_mon.h");
     g_assert_false(run_architecture_check(root));
+    write_source(root, "dash/fs_dash.h");
+    g_assert_false(run_architecture_check(root));
     write_source(root, "core/fs_error.h");
     g_assert_true(run_architecture_check(root));
 }

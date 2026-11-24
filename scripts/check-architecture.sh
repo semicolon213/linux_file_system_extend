@@ -16,15 +16,17 @@ report_matches() {
 }
 
 report_matches "core may depend only on GLib" src/core \
+    '^[[:space:]]*#include[[:space:]]*[<"](gtk|job|fs|mon|nav|dash|ui)/'
+report_matches "dash may depend only on core and GLib" src/dash \
     '^[[:space:]]*#include[[:space:]]*[<"](gtk|job|fs|mon|nav|ui)/'
-report_matches "job must not depend on GTK, fs, mon, nav, or ui" src/job \
-    '^[[:space:]]*#include[[:space:]]*[<"](gtk|fs|mon|nav|ui)/'
-report_matches "fs must not depend on GTK, mon, nav, or ui" src/fs \
-    '^[[:space:]]*#include[[:space:]]*[<"](gtk|mon|nav|ui)/'
-report_matches "mon must not depend on GTK, fs, job, nav, or ui" src/mon \
-    '^[[:space:]]*#include[[:space:]]*[<"](gtk|fs|job|nav|ui)/'
-report_matches "nav must not depend on GTK, fs, job, mon, or ui" src/nav \
-    '^[[:space:]]*#include[[:space:]]*[<"](gtk|fs|job|mon|ui)/'
+report_matches "job must not depend on GTK, fs, mon, nav, dash, or ui" src/job \
+    '^[[:space:]]*#include[[:space:]]*[<"](gtk|fs|mon|nav|dash|ui)/'
+report_matches "fs must not depend on GTK, mon, nav, dash, or ui" src/fs \
+    '^[[:space:]]*#include[[:space:]]*[<"](gtk|mon|nav|dash|ui)/'
+report_matches "mon must not depend on GTK, fs, job, nav, dash, or ui" src/mon \
+    '^[[:space:]]*#include[[:space:]]*[<"](gtk|fs|job|nav|dash|ui)/'
+report_matches "nav must not depend on GTK, fs, job, mon, dash, or ui" src/nav \
+    '^[[:space:]]*#include[[:space:]]*[<"](gtk|fs|job|mon|dash|ui)/'
 
 while IFS= read -r file; do
     while IFS= read -r include; do

@@ -77,6 +77,7 @@ gboolean fs_path_check_protected(const char *path, FsPathOp op, GError **error) 
         "/proc", "/run",  "/sbin", "/snap", "/sys", "/usr",   "/var",
     };
     g_autofree char *canonical = NULL;
+    g_autofree char *canonical_home = NULL;
     const char *home;
 
     if (!fs_path_validate_absolute(path, error)) {
@@ -92,7 +93,9 @@ gboolean fs_path_check_protected(const char *path, FsPathOp op, GError **error) 
         if (home == NULL) {
             home = g_get_home_dir();
         }
-        if (g_str_equal(canonical, "/") || (home != NULL && g_str_equal(canonical, home))) {
+        canonical_home = home != NULL ? fs_path_canonicalize(home) : NULL;
+        if (g_str_equal(canonical, "/") ||
+            (canonical_home != NULL && g_str_equal(canonical, canonical_home))) {
             return fs_path_set_validation_error(error, FS_ERROR_PROTECTED_PATH,
                                                 "operation is blocked for a protected path");
         }

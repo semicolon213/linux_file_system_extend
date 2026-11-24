@@ -30,7 +30,9 @@ typedef struct {
     gint64 mtime_ns;
 } FsEntry;
 
+/* [any] Frees entry and its owned name; accepts NULL. */
 void fs_entry_free(FsEntry *entry);
+/* [any] Returns a deep copy owned by the caller, or NULL for NULL input. */
 FsEntry *fs_entry_copy(const FsEntry *entry);
 
 G_DEFINE_AUTOPTR_CLEANUP_FUNC(FsEntry, fs_entry_free)
