@@ -9,6 +9,7 @@ colors:
   line: "#263241"
   line-soft: "#1b2430"
   line-float: "#33435a"
+  vol-mid: "#5f6a7a"
   ink: "#e6e9ee"
   ink-2: "#b9c1cc"
   dim: "#8a94a3"
@@ -67,6 +68,10 @@ typography:
     fontFamily: "Ubuntu Mono, Noto Sans Mono, DejaVu Sans Mono, ui-monospace, monospace"
     fontSize: "12px"
     letterSpacing: "0.02em"
+  axis:
+    fontFamily: "Ubuntu Mono, Noto Sans Mono, DejaVu Sans Mono, ui-monospace, monospace"
+    fontSize: "11px"
+    fontFeature: "tnum"
   figure:
     fontFamily: "Ubuntu Mono, Noto Sans Mono, DejaVu Sans Mono, ui-monospace, monospace"
     fontSize: "17px"
@@ -196,6 +201,44 @@ components:
   event-log:
     backgroundColor: "{colors.bg-2}"
     height: "232px"
+  panel-tab:
+    textColor: "{colors.dim}"
+    typography: "{typography.heading}"
+    height: "38px"
+    padding: "0 10px"
+  panel-tab-selected:
+    textColor: "{colors.ink}"
+  chart-legend:
+    textColor: "{colors.ink-2}"
+    typography: "{typography.label}"
+  chart-candle-up:
+    backgroundColor: "{colors.up}"
+    width: "12px"
+  chart-candle-down:
+    backgroundColor: "{colors.down}"
+    width: "12px"
+  chart-candle-flat:
+    backgroundColor: "{colors.vol-mid}"
+    width: "12px"
+  chart-volume-create:
+    backgroundColor: "{colors.up}"
+  chart-volume-modify:
+    backgroundColor: "{colors.vol-mid}"
+  chart-volume-delete:
+    backgroundColor: "{colors.down}"
+  chart-axis-label:
+    textColor: "{colors.dim}"
+    typography: "{typography.axis}"
+  chart-now-label:
+    backgroundColor: "{colors.ink}"
+    textColor: "{colors.bg}"
+    rounded: "{rounded.hair}"
+    height: "18px"
+  chart-tooltip:
+    backgroundColor: "{colors.raise}"
+    textColor: "{colors.ink}"
+    rounded: "{rounded.sm}"
+    padding: "8px 10px"
   event-row:
     typography: "{typography.data-dense}"
     height: "24px"
@@ -309,6 +352,7 @@ FileScope는 파일 변경을 증권 시세 틱처럼 다룬다. 남흑색 바�
 - **괘선** (`line`): 구역 경계, 버튼·입력 테두리, 열 머리글 밑줄. **옅은 괘선** (`line-soft`): 목록 행 사이, 탭 사이.
 - **잉크** (`ink`): 본문 글자. 반전 띠에서는 바탕색이 된다. 감시 중 표시 점도 `ink`(흰 점)다. **보조 잉크** (`ink-2`): 버튼 글자, 패널 보조 문장. **흐린 잉크** (`dim`): 보합(—, ◦, →), 라벨, 시각, 권한 문자열.
 - **떠 있는 면 테두리** (`line-float`): 메뉴, 토스트, 요약 창처럼 다른 내용 위에 뜨는 면의 1px 테두리. 시안 CSS에는 아직 리터럴 `#33435a`로 적혀 있다.
+- **거래량 회색 (Volume Mid)** (`vol-mid`): 차트 전용 중간 회색. 보합 봉(시가 = 종가)과 거래량 스택의 "수정" 칸에 쓴다. 빨강·파랑과 정상 시각 ΔE ≥ 21이지만 적색약(protan) 시뮬레이션에서는 7.5로 하한 구간이다. 그래서 차트에서는 색만으로 구분하지 않고 범례 기호, 세그먼트 사이 2px 간격, 툴팁의 건수 표기를 반드시 함께 둔다.
 - **그림 바닥** (`media-well`): 이미지 비교 칸 바탕. **스크롤바** (`scroll-thumb`).
 
 ### Named Rules
@@ -337,12 +381,13 @@ FileScope는 파일 변경을 증권 시세 틱처럼 다룬다. 남흑색 바�
 ### Hierarchy
 - **Title** (600, 16px): 변경 내용 패널의 파일 이름, 빈 상태 제목.
 - **Row Name** (500, 14px): 목록의 파일 이름. 폴더는 600. 현재 경로의 마지막 브레드크럼도 600/14px.
-- **Heading** (600, 13px): "이벤트 로그", "이번 세션" 같은 구역 제목.
+- **Heading** (600, 13px): 하단 패널 탭, "이번 세션" 같은 구역 제목.
 - **Body** (400, 13px, 1.45): 기본 글자, 트리 노드, 버튼.
 - **Label** (500, 12px): 열 머리글(흐린 잉크), 지표 라벨, 패널 메타, 칩, 상태 표시줄.
 - **Group Label** (600, 11px, 흐린 잉크): 사이드바의 "즐겨찾기 / 폴더 / 시스템" 묶음 이름.
 - **Data** (mono, 13px, tnum): 크기, 변동, 수정 시각, 권한. 변동 열에 색이 붙으면 600.
 - **Data Dense** (mono, 12.5px, 1.6, tnum): 줄 Diff, 이벤트 로그 행.
+- **Axis** (mono, 11px): 차트 축 라벨(MB, HH:MM). 현재가 라벨은 같은 크기 600.
 - **Event Code** (mono, 12px, 자간 0.02em): 목록의 이벤트 열(`▲ MODIFY`).
 - **Figure** (mono 600, 17px): 헤더바 실시간 지표 숫자. **Figure Large** (mono 600, 19px): 세션 집계 숫자. 기호는 13px로 숫자 앞에 붙는다.
 
@@ -354,11 +399,11 @@ FileScope는 파일 변경을 증권 시세 틱처럼 다룬다. 남흑색 바�
 
 ## Layout
 
-창은 위에서 아래로 다섯 줄이다: 헤더바 48px, 탭 줄 34px, 작업 영역(남는 높이), 이벤트 로그 232px, 상태 표시줄 28px. 작업 영역은 세 칸이다: 사이드바 240px, 파일 목록(남는 폭), 변경 내용 패널 440px. 패널은 헤더바 토글로 접으며, 접으면 목록이 폭을 가져간다. 로그는 이벤트 표(남는 폭)와 세션 집계 260px 두 칸이다. 최소 창 폭은 1024px.
+창은 위에서 아래로 다섯 줄이다: 헤더바 48px, 탭 줄 34px, 작업 영역(남는 높이), 이벤트 로그 232px, 상태 표시줄 28px. 작업 영역은 세 칸이다: 사이드바 240px, 파일 목록(남는 폭), 변경 내용 패널 440px. 패널은 헤더바 토글로 접으며, 접으면 목록이 폭을 가져간다. 하단 패널은 탭 [이벤트 로그 | 변경량 · 1분봉]으로 바뀌는 왼쪽 칸(남는 폭)과 세션 집계 260px 두 칸이다. 최소 창 폭은 1024px.
 
 목록 열 폭: 이름(남는 폭), 크기 92px, 변동 112px, 이벤트 96px, 수정 시각 122px, 권한 104px. 크기·변동은 오른쪽 정렬.
 
-행 높이: 목록 34px, 열 머리글 32px, 로그 24px, 로그 도구줄 38px. 컨트롤 높이: 버튼·검색 30px, 띠 안 버튼 26px, 칩 24px.
+행 높이: 목록 34px, 열 머리글 32px, 로그 24px, 하단 패널 도구줄 38px. 컨트롤 높이: 버튼·검색 30px, 띠 안 버튼 26px, 칩 24px.
 
 간격은 4/6/8/12/16px 리듬이다. 셀 좌우 12px, 패널 안쪽 16px, 트리 깊이당 들여쓰기 14px. 빈 상태 블록만 56px 32px 여백에 폭 520px 이하.
 
@@ -372,7 +417,7 @@ FileScope는 파일 변경을 증권 시세 틱처럼 다룬다. 남흑색 바�
 평면이다. 깊이는 명도 단계(`media-well` < `bg` < `bg-2` < `raise` < `hover`)와 1px 괘선으로만 낸다. 그림자는 화면 위에 떠서 다른 내용을 가리는 두 요소에만 쓴다.
 
 ### Shadow Vocabulary
-- **떠 있는 층** (`box-shadow: 0 8px 24px rgba(0,0,0,.45)`): 컨텍스트 메뉴와 토스트. 테두리는 1px `line-float`.
+- **떠 있는 층** (`box-shadow: 0 8px 24px rgba(0,0,0,.45)`): 컨텍스트 메뉴, 토스트, 차트 툴팁. 테두리는 1px `line-float`.
 - **떠 있는 창** (`box-shadow: 0 12px 32px rgba(0,0,0,.55)`): 트레이 요약 창. GTK에서는 창 관리자·CSD 장식이 그리는 그림자이므로 직접 그리지 않는다(시안은 근사치).
 - 그 외에는 그림자를 쓰지 않는다.
 
@@ -442,11 +487,29 @@ FileScope는 파일 변경을 증권 시세 틱처럼 다룬다. 남흑색 바�
 - **폴더:** 이 세션의 하위 변경을 로그와 같은 행 형식으로.
 - **되돌리기 확인:** 패널 안에 1px `ink-2` 테두리 상자로 열리고, 지금 버전도 이력에 남는다고 알린다. 취소 버튼에 포커스가 먼저 간다.
 
+### Bottom Panel Tabs (하단 패널 탭)
+- 도구줄(38px) 왼쪽에 탭 두 개: [이벤트 로그 | 변경량 · 1분봉]. Heading(13px 600), 좌우 10px, 기본 `dim`, 호버 `ink`, 선택 탭은 `ink` 글자와 아래 2px `sel` 밑줄(창 탭과 같은 처리).
+- ←/→로 탭을 바꾸고 포커스가 따라간다. 탭에 따라 도구줄 오른쪽이 바뀐다: 로그 탭은 칩과 거르기 검색, 차트 탭은 범례와 "새 창으로" 버튼(26px).
+- 세션 집계 칸은 두 탭에서 그대로 남는다.
+
 ### Event Log
-- 도구줄: Heading "이벤트 로그", 칩(전체 / 생성·삭제 / 수정 / 이동 / 속성), 경로 거르기 검색(200px, 26px).
+- 도구줄: 칩(전체 / 생성·삭제 / 수정 / 이동 / 속성), 경로 거르기 검색(200px, 26px).
 - **칩:** 24px 알약, 1px `line` 테두리, `dim` 글자. 눌린 칩은 `ink` 글자와 `ink-2` 테두리.
 - **행:** Data Dense, 24px. 시각 `HH:MM:SS.mmm`(흐림, 118px), 이벤트(600, 시세 색, 110px), 경로, 값(오른쪽 정렬, 150px). 행을 누르면 목록에서 해당 파일을 선택한다. 최대 500줄.
 - **세션 집계:** 생성·수정·삭제·이동·속성 건수를 Figure Large로, 기호를 앞에 붙인다. 생성·수정은 `up`, 삭제는 `down`, 이동·속성은 `dim`.
+
+### Change Volume Chart (변경량 · 1분봉)
+감시 폴더 총용량을 시세처럼 1분 캔들로 본다. 시가 = 그 분의 시작 용량, 고가/저가 = 분 안 극값, 종가 = 분 끝 용량. 거래량 = 그 분의 이벤트 수(생성·수정·삭제). 최근 30분을 보여 준다.
+- **범례:** 12px `ink-2`, 10px 견본(2px 모서리). "상승(용량 증가)" `up`, "하락(용량 감소)" `down`, 1px `line` 구분선, "거래량:" `up` ● 생성, `vol-mid` ▲▼ 수정, `down` ✕ 삭제.
+- **영역:** 여백 왼쪽 12px, 오른쪽 92px(축), 위 12px, 아래 22px. 위 70%가 가격 영역, 8px 띄우고 나머지가 거래량 영역.
+- **격자:** 가격 영역에 가로선 4개(1px `line-soft`), 거래량 바닥선 1개. 세로 격자는 없다.
+- **봉:** 상승(종가 > 시가) `up`, 하락 `down`, 보합(종가 = 시가) `vol-mid`. 몸통 폭은 칸 폭의 56%, 3~12px, 모서리 1px, 최소 높이 1.5px. 심지 1.5px, 몸통과 같은 색. 이벤트가 없는 분은 봉도 거래량도 그리지 않는다(빈 칸으로 둔다).
+- **거래량 스택:** 몸통과 같은 폭, 아래부터 생성(`up`) → 수정(`vol-mid`) → 삭제(`down`), 불투명도 0.85, 세그먼트 사이 2px 간격(각 칸 높이에서 2px를 뺀다, 최소 1px). 높이는 30분 중 최대 건수 기준.
+- **축:** 오른쪽 y축에 MB 소수 셋째 자리(`182.402 MB`), 아래 x축은 5분마다와 마지막 칸에 `HH:MM`. 모두 Axis(mono 11px `dim`).
+- **현재가:** 마지막 종가에 1px `ink-2` 3/3 점선을 가로로 긋고, 오른쪽 축에 반전 라벨(`ink` 바탕, `bg` 글자, mono 600 11px, 18px 높이, 2px 모서리)을 단다. 차트 안의 유일한 반전 요소이며 오류 표시가 아니다.
+- **십자선과 툴팁:** 마우스를 올리거나 키보드로 고른 분에 1px `ink-2` 3/3 점선 세로선(가격 위부터 거래량 바닥까지). 마우스 호버 시 그 봉 몸통에 1px `ink` 테두리. 툴팁은 `raise` 바탕, 1px `line-float` 테두리, 4px 모서리, 떠 있는 층 그림자, 12px/1.55 글자, 숫자는 mono 600. 세 줄: `HH:MM · 종 N MB ▲ +N KB`(증감은 시세 색과 기호), `시 / 고 / 저`, `● 생성 N · ▲▼ 수정 N · ✕ 삭제 N`. 커서 오른쪽 12px, 차트 위 10px에 두고 축과 겹치지 않게 막는다.
+- **키보드:** 차트는 포커스를 받는다(포커스 링 2px `sel`). ←/→로 봉을 옮기고(처음 누르면 마지막 봉), Esc나 포커스 이탈로 십자선과 툴팁을 닫는다.
+- **실시간:** 외부 이벤트가 오면 마지막 봉(새 분이면 새 봉)의 종가·고저·거래량이 바로 갱신되고 30개를 넘으면 가장 오래된 봉이 빠진다. 접근성 이름은 "감시 폴더 총용량 1분봉 차트".
 
 ### Statusbar
 - `raise` 바탕, 위 1px `line`, Label/흐린 잉크. 항목 수, 선택, 오른쪽에 이력 보관 용량, 디스크 여유, inotify watch 사용량(mono).
@@ -509,6 +572,7 @@ FileScope는 파일 변경을 증권 시세 틱처럼 다룬다. 남흑색 바�
 - **Do** Diff와 버전 비교에서는 git 관례(초록 +, 빨강 −)를 따르고 기호를 글자로 넣는다.
 - **Do** 크기, 시각, 권한, 해시, 지표 숫자는 Ubuntu Mono 고정폭으로 쓴다.
 - **Do** 음수에는 U+2212(−)를 쓴다.
+- **Do** 차트에서 `vol-mid`를 쓸 때는 범례 기호, 세그먼트 2px 간격, 툴팁 건수를 함께 둔다. 색만으로 수정과 보합을 읽게 하지 않는다.
 - **Do** 모션 감소 설정에서는 플래시를 빼고 잔상 바탕만 남긴다.
 
 ### Don't:
@@ -534,7 +598,7 @@ FileScope는 파일 변경을 증권 시세 틱처럼 다룬다. 남흑색 바�
 ```css
 @define-color fs_bg #10151c;        @define-color fs_bg_2 #141b24;
 @define-color fs_raise #18202a;     @define-color fs_hover #1c2632;
-@define-color fs_line #263241;      @define-color fs_line_soft #1b2430; @define-color fs_line_float #33435a;
+@define-color fs_line #263241;      @define-color fs_line_soft #1b2430; @define-color fs_line_float #33435a; @define-color fs_vol_mid #5f6a7a;
 @define-color fs_ink #e6e9ee;       @define-color fs_ink_2 #b9c1cc;   @define-color fs_dim #8a94a3;
 @define-color fs_up #f0525a;        @define-color fs_up_wash alpha(@fs_up, 0.11);     @define-color fs_up_flash alpha(@fs_up, 0.42);
 @define-color fs_down #4d9bff;      @define-color fs_down_wash alpha(@fs_down, 0.11); @define-color fs_down_flash alpha(@fs_down, 0.40);
@@ -559,6 +623,7 @@ C 코드(셀 데이터 함수, cairo, Pango)에서 쓰는 색은 같은 값을 `
 | 파일 목록 | `GtkTreeView` + `GtkListStore`(아래 1번) |
 | 알림 띠 | `GtkRevealer` 안의 `GtkBox`에 `.fs-band`, `.fs-band.quiet` 스타일 클래스(`GtkInfoBar`는 자체 테마가 강해 쓰지 않는다) |
 | 변경 내용 패널 | `GtkScrolledWindow` + `GtkBox`, 복합 문서 항목은 `GtkExpander`, 이미지 비교 방식은 `.linked` `GtkBox` 안 `GtkToggleButton` 두 개, 겹쳐 밀기 슬라이더는 `GtkScale` |
+| 하단 패널 탭 / 변경량 차트 | `GtkStack` + `GtkStackSwitcher` / `GtkDrawingArea`(cairo), 툴팁은 `GtkPopover` 또는 직접 그리기 |
 | 이벤트 로그 | `GtkTreeView`(최대 500행), 칩은 `GtkToggleButton.fs-chip`(한 번에 하나만 눌림) |
 | 세션 집계 | `GtkGrid` + `GtkLabel` |
 | 상태 표시줄 | `GtkBox` + `GtkLabel` |
@@ -592,7 +657,15 @@ C 코드(셀 데이터 함수, cairo, Pango)에서 쓰는 색은 같은 값을 `
 - 배치: X11에서는 `gtk_window_move()`로 화면(작업 영역) 오른쪽 위로 옮긴다. Wayland에서는 `gtk_window_move()`가 무시되므로 컴포지터 배치를 그대로 허용한다. layer-shell 같은 우회는 가정하지 않는다. 시안의 위치는 X11 기준이다.
 - 요약 창의 최근 변경 5행은 `GtkListBox`로 충분하다(행 수가 고정). 틱은 파일 목록과 같은 보간 함수를 쓰고, 행마다 CSS를 바꾸는 대신 행 위젯의 `draw` 핸들러에서 보간한 색으로 cairo 배경을 칠한다.
 
-### 4. 글꼴
+### 4. 변경량 차트
+
+- 차트는 `GtkDrawingArea` 하나에 cairo로 그린다(격자, 봉, 거래량, 축 라벨, 현재가 점선과 반전 라벨, 십자선). 축 글자는 `pango_cairo_show_layout`, 점선은 `cairo_set_dash`(3, 3). 0.5px 보정으로 1px 선을 픽셀에 맞춘다.
+- 데이터는 1분 버킷 30개의 링 버퍼(시·고·저·종, 생성·수정·삭제 건수)다. 이벤트가 들어오면 버킷만 갱신하고 `gtk_widget_queue_draw()`를 부른다. 차트 탭이 보이지 않으면 그리지 않는다.
+- 툴팁은 `GtkPopover`(`gtk_popover_set_pointing_to`로 봉 위치 지정)로 띄우거나 같은 `draw` 안에서 직접 그린다. 직접 그리면 `line-float` 테두리와 그림자를 cairo로 근사한다.
+- 키보드: `gtk_widget_set_can_focus(TRUE)`, `key-press-event`에서 ←/→/Esc 처리, `focus-out-event`에서 십자선을 지운다. 포커스 링은 `gtk_render_focus()`로 테마의 `outline`(2px `fs_sel`)을 따른다. 고른 봉의 툴팁 내용은 ATK 이름/설명(`atk_object_set_description`)으로도 내보내 화면 읽기 프로그램이 읽게 한다.
+- 하단 패널 탭은 `GtkStack` + `GtkStackSwitcher`(또는 탭 머리만 테마한 `GtkNotebook`)로 만들고, 선택 탭 밑줄은 `box-shadow: inset 0 -2px @fs_sel`로 입힌다.
+
+### 5. 글꼴
 
 - Ubuntu에서는 시스템 글꼴 스택을 쓴다: 본문 Ubuntu → Noto Sans CJK KR, 숫자 Ubuntu Mono. GTK CSS `font-family`로 지정하되 사용자 글꼴 크기 설정(글꼴 확대)을 깨지 않게 한다.
 - 시안 스크린샷(`.impeccable/review/*.png`)은 Windows 대체 글꼴로 렌더링된 것이다. 글자 폭, 열 폭(특히 변동 112px, 수정 시각 122px), 기호 ▲ ▼ ● ✕ → ◦의 글꼴 지원과 높이는 실제 Ubuntu에서 다시 확인해야 한다.

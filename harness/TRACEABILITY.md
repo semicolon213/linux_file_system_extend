@@ -1,7 +1,7 @@
 # 요구사항 추적표
 아래는 계획 항목이며 구현 또는 테스트 통과를 의미하지 않는다. 테스트 계획의 세부 Given/When/Then은 작업 지시서(harness/tasks/)가 정본이고, TC ID는 docs/testing/TEST_CASES.md를 따른다.
 
-작업: R1-T01 core(002), R1-T02 job(003), R1-T03 fs(004), R1-T04 mon(005), R1-T05 nav(006), R1-T06 ui(007).
+작업: R1-T01 core(002), R1-T02 job(003), R1-T03 fs(004), R1-T04 mon(005), R1-T05 nav(006), R1-T06 ui(007), R1-T07 dash(008).
 
 ## R1 P0
 
@@ -59,6 +59,10 @@
 | SEC-001 | R1-T01, R1-T06 | TC-SEC-001: 권한 사전 점검은 권고, 실제 syscall 오류 표시 | PLANNED |
 | SEC-002 | R1-T03, R1-T06 | TC-SEC-002: CONFIRMED 없는 위험 작업 거부 | PLANNED |
 | SEC-003 | R1-T01, R1-T03 | TC-SEC-003: 보호 경로 거부(쓰기 시도 없음) | PLANNED |
+| DASH-001 | R1-T07, R1-T06 | TC-DASH-001: 세션 집계·헤더 지표(최근 1분, 반영 지연 P95) | PLANNED |
+| DASH-002 | R1-T04, R1-T07, R1-T06 | TC-DASH-002: 루트 크기 색인·size_delta/root_total 불변식(T04), 1분봉 시·고·저·종·거래량·링 버퍼(T07), 하단 패널 탭·새 창·키보드 툴팁(T06). P1을 사용자 결정으로 R1에 포함 | PLANNED |
+| DASH-003 | R1-T06 | TC-DASH-003: 이벤트 로그 500행, 행 선택 시 목록 선택 | PLANNED |
+| DASH-005 | R1-T06 | TC-DASH-005: 칩·경로 거르기가 원본을 바꾸지 않음 | PLANNED |
 
 ## R2 이후 (참고)
 
@@ -67,4 +71,4 @@
 | HIS-001 | HIS-db (R2) | 재시작 후 이력 유지 | PLANNED |
 | ARC-016 | ARC-safe | 경로 탈출·링크 차단 | PLANNED |
 
-추가 열(구현 SHA, 테스트 경로, 증거 경로, QA 판정)은 통합 시 Integration이 채운다. ROADMAP 미배정 P0(UI, DASH, CFG)는 OPEN_QUESTIONS U-9 결정 후 등록한다.
+추가 열(구현 SHA, 테스트 경로, 증거 경로, QA 판정)은 통합 시 Integration이 채운다. UI P0와 CFG-001 행은 U-9 결정 범위로 R1-T06 수용 조건에서 추적한다. 변동 열(U-4)은 MON-017 행과 R1-T06 수용 조건에서 추적한다.

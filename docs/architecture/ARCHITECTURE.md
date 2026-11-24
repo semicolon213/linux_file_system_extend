@@ -1,6 +1,6 @@
 # 아키텍처
 
-상태: R1 계약 제안 (ARCH-001, 2026-11-24). ADR-0001(승인)과 ADR-0002~0005(제안)를 따른다.
+상태: R1 계약 제안 (ARCH-001, 2026-11-24). ADR-0001(승인), ADR-0002~0005(ARCH-001 승인 범위), ADR-0006(제안, 변경량 1분봉)을 따른다.
 
 Modular Monolith + Event-Driven + Layered. 단일 프로세스, GTK 메인 루프, inotify 전용 수신 스레드, bounded 전달 큐, 작업 큐 worker. SQLite 단일 writer는 R2에서 도입한다(DATABASE_SCHEMA.md). 이벤트 전달은 관측 결과 전달용이며 명령 실행의 필수 경로가 아니다. 외부 서비스는 쓰지 않는다.
 
@@ -12,7 +12,8 @@ app (src/main.c)            조립, 수명 관리, 종료 순서
        ├─ nav (src/nav)     목록 읽기, 이력, 경로 분해, 자동완성, 즐겨찾기
        ├─ fs  (src/fs)      파일 작업 (생성·이름 변경·복사·이동·삭제·휴지통·텍스트 저장)
        │    └─ job (src/job)  작업 큐, 진행률, 취소
-       ├─ mon (src/mon)     inotify 감시, 이벤트 정규화·병합·전달
+       ├─ mon (src/mon)     inotify 감시, 이벤트 정규화·병합·전달, 루트별 크기 색인
+       ├─ dash (src/dash)   세션 집계, 변경량 1분봉 링 버퍼, 헤더 지표 (GTK 없음)
        └─ core (src/core)   오류 도메인, 경로 검증, 이벤트 타입, 공통 타입
 ```
 
@@ -21,11 +22,12 @@ app (src/main.c)            조립, 수명 관리, 종료 순서
 | 모듈 | 의존 가능 | 금지 |
 |---|---|---|
 | core | GLib | GTK, 다른 모든 모듈 |
-| job | core, GLib/GIO | GTK, fs, mon, nav, ui |
-| fs | core, job, GLib/GIO | GTK, mon, nav, ui |
-| mon | core, GLib | GTK, fs, job, nav, ui |
-| nav | core, GLib/GIO | GTK, fs, job, mon, ui |
-| ui | core, job, fs, mon, nav, GTK3 | 모듈 내부 헤더 |
+| dash | core, GLib | GTK, job, fs, mon, nav, ui |
+| job | core, GLib/GIO | GTK, fs, mon, nav, dash, ui |
+| fs | core, job, GLib/GIO | GTK, mon, nav, dash, ui |
+| mon | core, GLib | GTK, fs, job, nav, dash, ui |
+| nav | core, GLib/GIO | GTK, fs, job, mon, dash, ui |
+| ui | core, job, fs, mon, nav, dash, GTK3 | 모듈 내부 헤더 |
 | app | 모든 공개 헤더 | 모듈 내부 헤더 |
 
 - 다른 모듈의 공개 헤더(`src/<m>/fs_<m>.h`, core는 `src/core/*.h` 전부)만 include한다. 내부 헤더는 `src/<m>/*_internal.h`로 이름 짓고 같은 모듈 안에서만 쓴다.
@@ -43,10 +45,11 @@ src/
   fs/    fs_ops.h  ops_*.c  ops_internal.h  CMakeLists.txt
   mon/   fs_mon.h  fs_mon_testing.h  watcher.c  normalizer.c  registry.c  mon_internal.h  CMakeLists.txt
   nav/   fs_nav.h  listing.c  history.c  bookmarks.c  complete.c  CMakeLists.txt
+  dash/  fs_dash.h  dash.c  CMakeLists.txt
   ui/    fs_ui.h  (창·모델·위젯 파일은 UI 작업이 정함)  CMakeLists.txt
 tests/
   test_app_info.c                기존
-  core/ job/ fs/ mon/ nav/ ui/   단위 테스트 (모듈별 CMakeLists.txt)
+  core/ job/ fs/ mon/ nav/ dash/ ui/  단위 테스트 (모듈별 CMakeLists.txt)
   integration/                   실제 임시 파일 시스템 시나리오 (파일 이름 접두사로 소유 구분: fs_*, mon_*)
   support/                       공용 fixture 도우미 (core 작업 소유)
 ```
@@ -61,13 +64,14 @@ tests/
 | filescope_fs | STATIC | src/fs/*.c | core, job, GIO |
 | filescope_mon | STATIC | src/mon/*.c | core, GLib, Threads |
 | filescope_nav | STATIC | src/nav/*.c | core, GIO |
-| filescope_ui | STATIC | src/ui/*.c | core, job, fs, mon, nav, GTK3 |
+| filescope_dash | STATIC | src/dash/*.c | core, GLib |
+| filescope_ui | STATIC | src/ui/*.c | core, job, fs, mon, nav, dash, GTK3 |
 | filescope | 실행 파일 | src/main.c | info, ui |
 | filescope_test_support | STATIC (테스트 전용) | tests/support/*.c | GLib |
 
 - 모든 타깃은 루트 `filescope_configure_target()`(경고=오류, sanitizer)을 적용한다.
 - `target_include_directories(<lib> PUBLIC ${PROJECT_SOURCE_DIR}/src)`로 include 경로는 `"core/fs_error.h"`, `"mon/fs_mon.h"` 형식이다.
-- 루트 `CMakeLists.txt`는 단일 소유자(R1-T01)다. 루트는 `src/<m>/CMakeLists.txt`, `tests/<m>/CMakeLists.txt`가 있을 때만 `add_subdirectory`하고, `filescope_ui` 타깃이 있으면 실행 파일에 링크한다. 각 모듈 작업은 자기 하위 CMakeLists.txt만 소유한다(ADR-0004).
+- 루트 `CMakeLists.txt`는 단일 소유자(R1-T01)다. 루트는 `src/<m>/CMakeLists.txt`, `tests/<m>/CMakeLists.txt`가 있을 때만 `add_subdirectory`하고(m = job, fs, mon, nav, dash, ui), `filescope_ui` 타깃이 있으면 실행 파일에 링크한다. 각 모듈 작업은 자기 하위 CMakeLists.txt만 소유한다(ADR-0004).
 
 ## 4. 테스트 디렉터리 규칙
 
@@ -90,4 +94,4 @@ tests/
 
 ## 6. 단계별 도입
 
-R1: core, job, fs, mon, nav, ui. R2: his(SQLite, 스냅샷), src(검색), pre(미리보기), trash(휴지통 관리 화면). 변경 내용 패널과 Diff는 R2 이력에 의존한다. libarchive, GtkSourceView4, VTE, Poppler, libgit2는 해당 기능 릴리스에서 도입한다.
+R1: core, job, fs, mon, nav, dash, ui. R2: his(SQLite, 스냅샷), src(검색), pre(미리보기), trash(휴지통 관리 화면). 변경 내용 패널과 Diff는 R2 이력에 의존한다. libarchive, GtkSourceView4, VTE, Poppler, libgit2는 해당 기능 릴리스에서 도입한다.

@@ -6,8 +6,8 @@
 
 | 스레드 | 수 | 소유 데이터 | 하는 일 |
 |---|---|---|---|
-| main (GTK) | 1 | 위젯, 모델, FsNavHistory, FsNavBookmarks, FsWatcher·FsJobQueue 핸들 | UI, 모든 공개 콜백, 동기 파일 작업 |
-| mon watcher | FsWatcher당 1 | inotify fd, wd registry, MOVE 대기 표, 현재 배치 | poll, read, 정규화, 병합, 재귀 등록, 재탐색 |
+| main (GTK) | 1 | 위젯, 모델, FsNavHistory, FsNavBookmarks, FsDash, FsWatcher·FsJobQueue 핸들 | UI, 모든 공개 콜백, 동기 파일 작업 |
+| mon watcher | FsWatcher당 1 | inotify fd, wd registry, 크기 색인, MOVE 대기 표, 현재 배치 | poll, read, 정규화, 병합, 재귀 등록, 재탐색 |
 | job worker | FsJobQueue당 1 (`GThreadPool`, max_threads=1, exclusive) | 실행 중 작업의 본문 데이터 | FsJobFunc 실행 |
 | GIO 작업 스레드 | GLib 풀 | GTask 데이터 | nav 목록·자동완성 |
 

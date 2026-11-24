@@ -99,8 +99,32 @@ FsEvent 구조와 kind는 EVENT_SPEC.md §1~2가 정본이다. 함수:
 FsEvent *fs_event_ref(FsEvent *event);   /* [any] 원자적 */
 void fs_event_unref(FsEvent *event);     /* [any] 원자적, NULL 허용 */
 const char *fs_event_kind_to_string(FsEventKind kind); /* [any] "CREATE" 등, 정적 문자열 */
+
+/* getter. FsEvent는 opaque이며 필드 의미는 EVENT_SPEC §1. 모두 [any], 문자열은 (transfer none)으로
+ * 이벤트 수명 동안 유효 */
+guint64 fs_event_get_seq(const FsEvent *event);
+gint64 fs_event_get_observed_at_us(const FsEvent *event);
+gint64 fs_event_get_monotonic_ns(const FsEvent *event);
+gint64 fs_event_get_last_monotonic_ns(const FsEvent *event);
+guint32 fs_event_get_raw_mask(const FsEvent *event);
+FsEventKind fs_event_get_kind(const FsEvent *event);
+FsEventFlags fs_event_get_flags(const FsEvent *event);
+FsWatchId fs_event_get_watch_id(const FsEvent *event);
+const char *fs_event_get_path(const FsEvent *event);      /* NULL 가능 */
+const char *fs_event_get_old_path(const FsEvent *event);  /* NULL 가능 */
+guint32 fs_event_get_cookie(const FsEvent *event);
+gboolean fs_event_is_dir(const FsEvent *event);
+FsOriginHint fs_event_get_origin_hint(const FsEvent *event);
+guint64 fs_event_get_gap_id(const FsEvent *event);
+guint32 fs_event_get_merged_count(const FsEvent *event);
+/* stat_valid를 반환. 출력 포인터는 NULL 허용, FALSE면 출력값 0 */
+gboolean fs_event_get_stat(const FsEvent *event, guint64 *size, gint64 *mtime_ns, guint32 *mode);
+/* 미상이면 FALSE, *delta=0 (EVENT_SPEC §8) */
+gboolean fs_event_get_size_delta(const FsEvent *event, gint64 *delta);
+/* 미상이면 FALSE, *total=0 */
+gboolean fs_event_get_root_total(const FsEvent *event, guint64 *total);
 ```
-FsEvent 생성(`fs_event_new_internal`)은 mon과 테스트만 쓰는 `core/fs_event_internal.h`에 둔다.
+FsEvent 생성(`FsEvent *fs_event_new_internal(const FsEvent *source)`: 깊은 복사, refcount=1, source는 borrowed)과 구조체 정의는 mon과 테스트만 쓰는 `core/fs_event_internal.h`에 둔다.
 
 ## 2. job (`src/job/fs_job.h`)
 
@@ -266,6 +290,10 @@ typedef struct {
     FsWatchState state;
     FsWatchReason reason;
     guint watch_count;     /* 이 루트가 쓰는 inotify watch 수 */
+    gboolean total_known;  /* REGISTERING, STOPPED, ERROR, 재탐색 중이면 FALSE */
+    gboolean total_partial;/* 감시 못 한 하위가 있어 합계가 일부만 (EVENT_SPEC §8) */
+    guint64 total_bytes;   /* 루트 총용량(정규 파일 st_size 합) */
+    guint64 file_count;    /* 색인된 정규 파일 수 */
 } FsWatchInfo;
 
 /* events: (transfer none) FsEvent* 배열, 콜백 동안만 유효. 보관하려면 fs_event_ref */
@@ -295,7 +323,12 @@ GPtrArray *fs_mon_watcher_list_roots(FsWatcher *watcher);                       
 void fs_mon_watcher_get_usage(FsWatcher *watcher, guint *used, guint *limit);    /* [main] */
 /* 경로가 어떤 루트의 감시 범위 안인지 (ui "감시하지 않는 폴더" 띠) */
 FsWatchId fs_mon_watcher_find_root(FsWatcher *watcher, const char *path);        /* [main] */
+/* 루트 총용량(EVENT_SPEC §8). main 쪽 사본이며 이미 전달된 마지막 이벤트(또는 상태 콜백) 시점 값이다.
+ * 모르는 ID이거나 total_known=FALSE면 FALSE. 출력 포인터 NULL 허용 */
+gboolean fs_mon_watcher_get_root_total(FsWatcher *watcher, FsWatchId id, guint64 *total_bytes,
+                                       guint64 *file_count, gboolean *partial);  /* [main] */
 ```
+- 루트 총용량이 정해지거나 크게 바뀌는 시점(REGISTERING→ACTIVE, RESYNC 완료)은 state 콜백의 FsWatchInfo로도 알린다. 이벤트별 변화는 FsEvent의 size_delta/root_total로만 알린다(별도 콜백 없음).
 
 `src/mon/fs_mon_testing.h` (tests 전용, 라이브러리에 포함):
 ```c
@@ -356,7 +389,58 @@ gboolean fs_nav_bookmarks_save(FsNavBookmarks *bookmarks, GError **error);      
 ```
 - NAV-006(멀티 탭)은 ui가 탭마다 FsNavHistory 하나를 둔다. NAV 공통 계약 "경로 접근 실패 시 기존 탭 유지": ui는 list_dir가 성공한 뒤에만 history_push와 모델 교체를 한다.
 
-## 6. ui (`src/ui/fs_ui.h`)
+## 6. dash (`src/dash/fs_dash.h`)
+
+DASH-001(세션 집계), DASH-002(변경량 1분봉), DASH-003(이벤트 스트림 보관), 헤더 지표(최근 1분 이벤트, 반영 지연 P95)의 데이터 모델. GTK를 쓰지 않는 순수 GLib 모듈이며 화면은 ui가 그린다. 한 FsDash는 한 스레드(R1은 main)에서만 쓴다. 시간은 모두 호출자가 넘긴 값(테스트에서 고정 가능)을 쓴다.
+
+```c
+typedef struct FsDash FsDash;
+
+typedef struct {
+    gint64 minute_start_us;   /* 벽시계(g_get_real_time) 기준 분 시작, 로컬 시간대와 무관한 UTC 60초 경계 */
+    gboolean has_events;      /* 이 분에 거래량이 있었나. FALSE인 분은 봉을 그리지 않는다(시안) */
+    gboolean level_known;     /* 시가~종가가 정해졌나(감시 루트 총용량이 하나라도 미상이면 FALSE) */
+    gboolean has_gap;         /* 이 분에 OVERFLOW가 있었다 (R1 화면 표시는 하지 않음, 데이터만) */
+    guint64 open, high, low, close; /* 바이트. 모든 감시 루트 총용량의 합 */
+    guint creates, modifies, deletes; /* 거래량: 정규화 이벤트 수 (CREATE·합성 CREATE / MODIFY / DELETE) */
+} FsDashCandle;
+
+typedef struct {
+    guint64 creates, modifies, deletes, moves, attribs; /* 세션 누계 (DASH-001). moves = RENAME+MOVE+MOVED_IN+MOVED_OUT */
+} FsDashCounts;
+
+/* capacity_minutes: 보관할 분 수, 30 미만이면 30으로 올림. R1 ui는 60을 넘긴다 */
+FsDash *fs_dash_new(guint capacity_minutes);
+void fs_dash_free(FsDash *dash);                       /* NULL 허용 */
+
+/* 루트 총용량 기준값. 루트 ACTIVE·RESYNC 완료 시 FsWatchInfo 값으로 호출. known=FALSE면 미상 처리 */
+void fs_dash_set_root_total(FsDash *dash, FsWatchId id, gboolean known, guint64 total_bytes,
+                            gint64 now_us);
+void fs_dash_remove_root(FsDash *dash, FsWatchId id, gint64 now_us);
+/* mon events 콜백의 배치를 그대로 넘긴다(transfer none). 각 이벤트의 observed_at_us로 분을 정하고
+ * root_total로 해당 루트 수준을 갱신해 고가·저가를 이벤트 단위로 반영한다 */
+void fs_dash_add_events(FsDash *dash, const GPtrArray *events);
+/* 이벤트가 없어도 분이 넘어가게 한다. ui가 1초 주기 타이머로 호출 */
+void fs_dash_tick(FsDash *dash, gint64 now_us);
+
+/* 최근 n개 분(오래된 것부터, 현재 진행 중인 분 포함). (transfer full) GArray<FsDashCandle> */
+GArray *fs_dash_get_candles(FsDash *dash, guint n);
+void fs_dash_get_counts(FsDash *dash, FsDashCounts *out);
+/* now_us 기준 최근 60초 이벤트 수 (헤더 지표) */
+guint fs_dash_get_events_last_minute(FsDash *dash, gint64 now_us);
+/* 반영 지연 표본(ui가 모델 반영 직후 monotonic 차이를 ns로 넘김). 최근 1024개로 P95 계산, 표본 없으면 FALSE */
+void fs_dash_record_latency(FsDash *dash, gint64 latency_ns);
+gboolean fs_dash_get_latency_p95_ns(FsDash *dash, gint64 *p95_ns);
+```
+
+봉 규칙(PRODUCT.md "변경량 1분봉"):
+- 시가 = 그 분이 시작될 때의 총용량(= 직전 분 종가, 첫 분은 기준값), 고가/저가 = 그 분 안에서 관찰한 총용량의 최댓값/최솟값(시가 포함), 종가 = 그 분 마지막 총용량.
+- 총용량 = 감시 루트별 마지막 root_total의 합. 루트 추가·제거·RESYNC는 수준을 바꾸지만 거래량은 늘리지 않는다.
+- 이벤트의 root_total이 미상이면 그 루트 수준을 미상으로 두고, 해당 분의 level_known=FALSE. 거래량은 계속 센다.
+- 이벤트 observed_at_us가 현재 분보다 과거(시계 역행)면 현재 분에 넣는다. 보관 분 수를 넘으면 가장 오래된 분을 버린다(링 버퍼).
+- OVERFLOW가 있던 분은 has_gap=TRUE. 거래량은 받은 이벤트만 센다(유실분은 알 수 없음).
+
+## 7. ui (`src/ui/fs_ui.h`)
 
 ```c
 /* app이 activate에서 호출. 모듈 객체(FsWatcher, FsJobQueue)는 ui가 만들고 소유한다.
