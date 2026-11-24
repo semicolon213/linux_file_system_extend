@@ -27,7 +27,7 @@
 | R1-T04 mon | IN_PROGRESS (Codex) | R1-T01 |
 | R1-T05 nav C++ 포팅 | IN_PROGRESS (Codex) | R1-T01 |
 | R1-T06 ui | BACKLOG | R1-T03, R1-T04, R1-T05, R1-T07 |
-| R1-T07 dash | IN_PROGRESS (Codex) | R1-T01 |
+| R1-T07 dash | VERIFY (08424c7) | R1-T01 |
 
 의존 순서: R0-002 → R1-T01 → {R1-T02, R1-T04, R1-T05, R1-T07 병렬} → R1-T03(T02 필요) → R1-T06. 독립 QA는 R1 전체를 묶어 한 번 한다(R0-002 포함, PROGRESS 미결 사항 E-6).
 
