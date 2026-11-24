@@ -1,6 +1,6 @@
 # 작업 지시서
 - Task ID / 요구사항 ID: R0-001 / 빌드·테스트 하네스 (docs/engineering/BUILD.md, harness/QUALITY_GATES.md G1~G7 골격)
-- 상태: BLOCKED — Ubuntu 개발 패키지 미설치 (2026-11-24 확인: WSL Ubuntu-24.04에 gcc, cmake, ninja, pkg-config, GTK3, SQLite, xvfb 모두 없음). 설치에는 sudo가 필요해 에이전트가 수행할 수 없다.
+- 상태: IN_PROGRESS (2026-11-24 의존성 설치 확인 후 READY → Codex 배정)
 - 목표: C++17/Qt 6 스캐폴드를 C17/GTK3 CMake/Ninja 프로젝트로 교체하고, `make build/test/format-check/lint/architecture/asan/ubsan/tsan/e2e` 진입점을 만든다. 빈 창을 띄우는 GTK3 앱(창 제목 FileScope), GLib 테스트 1개 이상, Xvfb smoke 1개.
 - 제외 범위: 기능 모듈 구현, 시각 디자인 적용(DESIGN.md는 UI 작업에서 적용).
 - 기준 브랜치 / SHA: semicolon213/catshark @ 6d621d5 (main은 b563c1c, 디자인 커밋은 이 브랜치에만 있음)

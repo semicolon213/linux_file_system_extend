@@ -4,7 +4,7 @@
 |---|---|
 | 요구사항·설계 계약 확정 | IN_PROGRESS (ADR-0001 승인, INTERFACE_SPEC 등 세부 계약 미작성) |
 | 디자인 (메인 창, 트레이) | APPROVED (사용자 확정, 커밋 6d621d5) |
-| 빌드·테스트 하네스 구현 (R0-001) | BLOCKED: Ubuntu 개발 패키지 설치 필요 |
+| 빌드·테스트 하네스 구현 (R0-001) | IN_PROGRESS (Codex) |
 | 파일 CRUD 및 감시 | PLANNED |
 | UI 및 고급 기능 | PLANNED |
 작업별 ID, 담당, 기준 SHA, 상태, 차단 사유, QA 증거를 Coordinator가 기록한다.
