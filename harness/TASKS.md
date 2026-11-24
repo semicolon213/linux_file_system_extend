@@ -20,7 +20,7 @@
 | 작업 | 상태 | 선행 |
 |---|---|---|
 | R0-001 빌드·테스트 하네스 (C) | 대체됨 → R0-002 | - |
-| R0-002 C++ 전환 (빌드 하네스) | BLOCKED (사용자 `libgtkmm-3.0-dev` 설치 확인 대기) | ADR-0007, 의존성 설치 |
+| R0-002 C++ 전환 (빌드 하네스) | IN_PROGRESS (Codex, gtkmm 3.24.9 설치 확인 2026-11-24) | ADR-0007, 의존성 설치 |
 | R1-T01 core C++ 포팅 | BACKLOG (R0-002 병합 후 READY) | R0-002 |
 | R1-T02 job C++ 포팅 | BACKLOG (R1-T01 병합 후 READY) | R1-T01 |
 | R1-T03 fs | BACKLOG (C++ 계약, 이전 C 시도 폐기) | R1-T01, R1-T02 |
