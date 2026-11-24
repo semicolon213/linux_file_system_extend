@@ -12,7 +12,8 @@
 
 역할
 - Claude 메인 세션은 Coordinator다. 작업을 배정하고 결과를 리뷰하고 병합하며 상태를 확정한다.
-- Codex는 코드와 문서 수정을 모두 구현한다. 자기 작업을 승인하거나 병합하지 않는다.
+- Codex는 코드를 구현한다. 자기 작업을 승인하거나 병합하지 않는다.
+- 문서(docs/, harness/, AGENTS.md, CLAUDE.md, README.md) 수정은 Claude 메인 세션이 직접 한다. Codex는 문서를 고치지 않고 필요한 변경을 보고한다.
 - 독립 QA는 구현에 참여하지 않은 별도 Claude 세션이 한다. 작업마다 하지 않고 큰 작업 단위(예: 릴리스 R1 전체)로 묶어 한 번 한다.
 - 한 세션이 Coordinator, 구현자, QA 승인자를 겸하지 않는다. 절차와 양식은 harness/WORKFLOW.md.
 
