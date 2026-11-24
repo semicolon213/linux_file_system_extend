@@ -1,0 +1,4 @@
+# GTK/GLib process-global allocations; project frames remain unsuppressed.
+leak:libglib-2.0.so
+leak:libgobject-2.0.so
+leak:libgio-2.0.so

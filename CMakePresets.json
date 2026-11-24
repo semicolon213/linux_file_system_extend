@@ -1,0 +1,73 @@
+{
+  "version": 6,
+  "configurePresets": [
+    {
+      "name": "base",
+      "hidden": true,
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug"
+      }
+    },
+    {
+      "name": "debug",
+      "inherits": "base"
+    },
+    {
+      "name": "asan",
+      "inherits": "base",
+      "cacheVariables": {
+        "FILESCOPE_SANITIZER": "address"
+      }
+    },
+    {
+      "name": "ubsan",
+      "inherits": "base",
+      "cacheVariables": {
+        "FILESCOPE_SANITIZER": "undefined"
+      }
+    },
+    {
+      "name": "tsan",
+      "inherits": "base",
+      "cacheVariables": {
+        "FILESCOPE_SANITIZER": "thread"
+      }
+    }
+  ],
+  "buildPresets": [
+    { "name": "debug", "configurePreset": "debug" },
+    { "name": "asan", "configurePreset": "asan" },
+    { "name": "ubsan", "configurePreset": "ubsan" },
+    { "name": "tsan", "configurePreset": "tsan" }
+  ],
+  "testPresets": [
+    {
+      "name": "debug",
+      "configurePreset": "debug",
+      "output": { "outputOnFailure": true }
+    },
+    {
+      "name": "asan",
+      "configurePreset": "asan",
+      "output": { "outputOnFailure": true },
+      "environment": {
+        "ASAN_OPTIONS": "detect_leaks=1:halt_on_error=1",
+        "LSAN_OPTIONS": "suppressions=${sourceDir}/scripts/lsan.supp"
+      }
+    },
+    {
+      "name": "ubsan",
+      "configurePreset": "ubsan",
+      "output": { "outputOnFailure": true },
+      "environment": { "UBSAN_OPTIONS": "halt_on_error=1:print_stacktrace=1" }
+    },
+    {
+      "name": "tsan",
+      "configurePreset": "tsan",
+      "output": { "outputOnFailure": true },
+      "environment": { "TSAN_OPTIONS": "halt_on_error=1" }
+    }
+  ]
+}

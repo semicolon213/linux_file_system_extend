@@ -1,20 +1,27 @@
-# Linux File Explorer
+# FileScope
 
-C++17과 Qt 6로 만드는 Linux용 파일 탐색기 프로젝트입니다.
+FileScope is a native GTK3 application for Linux. This bootstrap contains the application window and the build and test harness; file-management features come later.
 
-## 준비
+## Build prerequisites
 
-Ubuntu/Debian 기준으로 빌드 도구와 Qt 6 개발 패키지를 설치합니다.
-
-```bash
-sudo apt install build-essential cmake qt6-base-dev
-```
-
-## 빌드 및 실행
+On Ubuntu 22.04 or 24.04, install the required and developer packages listed in `docs/engineering/DEPENDENCIES.md`:
 
 ```bash
-cmake -S . -B build
-cmake --build build
-./build/linux_file_explorer
+sudo apt install build-essential cmake ninja-build pkg-config libgtk-3-dev libsqlite3-dev libayatana-appindicator3-dev xvfb clang-format clang-tidy
 ```
 
+## Build and test
+
+```bash
+make build
+make test
+make verify
+```
+
+Run the application after building:
+
+```bash
+./build/debug/filescope
+```
+
+Additional checks are available through `make format-check`, `make lint`, `make architecture`, `make asan`, `make ubsan`, `make tsan`, and `make e2e`. The `integration`, `stress`, and `benchmark` targets intentionally return nonzero with `NOT_IMPLEMENTED` until those scenarios exist.
