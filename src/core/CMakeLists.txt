@@ -1,0 +1,5 @@
+add_library(filescope_core STATIC fs_error.c fs_event.c fs_path.c fs_types.c)
+target_include_directories(filescope_core PUBLIC ${PROJECT_SOURCE_DIR}/src)
+target_compile_definitions(filescope_core PRIVATE _GNU_SOURCE)
+target_link_libraries(filescope_core PUBLIC PkgConfig::GLIB PkgConfig::GIO)
+filescope_configure_target(filescope_core)

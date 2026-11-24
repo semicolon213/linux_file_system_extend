@@ -11,7 +11,7 @@ format-check:
 	clang-format --dry-run --Werror $$(find src tests -type f \( -name '*.c' -o -name '*.h' \) -print)
 
 lint: build
-	clang-tidy -p build/debug src/*.c tests/*.c
+	clang-tidy -p build/debug $$(find src tests -type f -name '*.c' -print)
 
 architecture:
 	./scripts/check-architecture.sh
@@ -34,8 +34,13 @@ tsan:
 e2e: build
 	./scripts/e2e-smoke.sh ./build/debug/filescope
 
-integration stress benchmark:
-	@echo "NOT_IMPLEMENTED: no $@ scenario exists at bootstrap stage" >&2
-	@exit 2
+integration: build
+	ctest --preset debug -L integration --no-tests=error
 
-verify: build test format-check lint asan ubsan e2e
+stress: build
+	ctest --preset debug -L stress --no-tests=error
+
+benchmark: build
+	ctest --preset debug -L benchmark --no-tests=error
+
+verify: build test format-check lint architecture asan ubsan tsan e2e
