@@ -24,7 +24,7 @@
 | R1-T01 core C++ 포팅 | VERIFY (1bdb270, make verify 0) | R0-002 |
 | R1-T02 job C++ 포팅 | VERIFY (91ba40b) | R1-T01 |
 | R1-T03 fs | IN_PROGRESS (Codex) | R1-T01, R1-T02 |
-| R1-T04 mon | IN_PROGRESS (Codex) | R1-T01 |
+| R1-T04 mon | VERIFY (4cc1116) | R1-T01 |
 | R1-T05 nav C++ 포팅 | VERIFY (2eab368) | R1-T01 |
 | R1-T06 ui | BACKLOG | R1-T03, R1-T04, R1-T05, R1-T07 |
 | R1-T07 dash | VERIFY (08424c7) | R1-T01 |

@@ -8,10 +8,10 @@ Coordinator가 갱신한다. 작업별 ID, 담당, 기준 SHA, 상태, 차단 �
 |---|---|
 | 요구사항·설계 계약 | R1 계약 승인(ARCH-001, 8615d98). 사용자 결정 U-1~U-9 기록 완료(§3 결정 기록). C++17 + gtkmm-3.0 판으로 갱신(ADR-0007 승인, ADR-0008 제안, 2026-11-24) |
 | 디자인 (메인 창, 트레이) | APPROVED (사용자 확정, 커밋 6d621d5). 루트 PRODUCT.md·DESIGN.md, docs/design/prototype. 언어 변경과 무관하게 유효 |
-| 빌드·테스트 하네스 | R0-001(C) 대체됨. R0-002 C++ 전환 VERIFY (b7ca5d3, make verify 0). R1-T01 core 포팅 IN_PROGRESS |
-| R1-T01 core, R1-T02 job, R1-T05 nav | C 구현(병합됨)은 C++ 포팅 대상. BACKLOG: T01은 R0-002 후, T02·T05는 T01 후 READY. 수용 조건 동일 |
-| R1-T03 fs, R1-T04 mon, R1-T07 dash | C 시도 중단·폐기. BACKLOG(C++ 계약). T04·T07은 T01 후, T03은 T01·T02 후 |
-| R1-T06 ui | BACKLOG (T03·T04·T05·T07 이후) |
+| 빌드·테스트 하네스 | R0-002 C++ 전환 VERIFY (b7ca5d3) |
+| R1-T01 core, R1-T02 job, R1-T05 nav, R1-T07 dash, R1-T04 mon | VERIFY (1bdb270, 91ba40b, 2eab368, 08424c7, 4cc1116). 개발자 게이트 통과, 묶음 QA 대기 |
+| R1-T03 fs | IN_PROGRESS (Codex) |
+| R1-T06 ui | BACKLOG (T03 이후) |
 | UI 및 고급 기능 (R2~) | PLANNED |
 
 ### 이력
@@ -21,6 +21,7 @@ Coordinator가 갱신한다. 작업별 ID, 담당, 기준 SHA, 상태, 차단 �
 - 2026-11-24: R1-T01(1de4d68), R1-T05(47f8824), R1-T02(49daab4) 병합.
 - 2026-11-24: 문서를 핵심 문서 체계로 통합(AGENTS.md 목차, docs/ 6개, harness/ 4개). 옛 문서 이름 대응은 docs/ARCHITECTURE.md §8.
 - 2026-11-24: 구현 언어를 C++17 + gtkmm-3.0으로 전환(사용자 결정, 수업 요구사항). ADR-0007·0008, docs/DESIGN.md 인터페이스 C++ 판, ARCHITECTURE·ENGINEERING·TESTING 갱신. 작업 재편: R0-002 신설(BLOCKED, gtkmm 설치 대기), R1-T01/T02/T05는 C++ 포팅, R1-T03/T04/T07의 C 시도는 중단·폐기 후 BACKLOG.
+- 2026-11-24: C++ 판 R0-002, R1-T01/T02/T05/T07 병합(VERIFY). R1-T04 mon 병합(4cc1116, 병합 후 build/test/integration/format-check/lint/architecture/asan/ubsan 0; tsan은 nav 테스트 1회 GLib 내부 경합 보고 후 3회 재실행 모두 0, E-10).
 
 ## 2. 요구사항 추적표
 
@@ -149,7 +150,8 @@ Coordinator가 갱신한다. 작업별 ID, 담당, 기준 SHA, 상태, 차단 �
 | ID | 내용 | 닫는 방법 |
 |---|---|---|
 | E-7 | 하드 링크는 경로마다 총용량에 더해진다(중복 집계). 디스크 모듈 공통 계약의 "하드 링크 중복 집계 방지"와 다르다 | 결정(2026-11-24 Coordinator): R1 시연 범위에서 허용. R2 이력·디스크 작업에서 (dev, ino) 집계로 교체 |
-| E-8 | 10만 파일 색인 16MiB 예산과 등록 시간은 측정 전 가정 | R1-T04 G8 기록 |
+| E-8 | 10만 파일 색인 16MiB 예산과 등록 시간은 측정 전 가정 | R1-T04 G8 기록: 10만 파일/1만 디렉터리 등록 0.247s, RSS +9.7MiB, 10초 1만 작업 gap 없음(WSL, 4cc1116) |
+| E-10 | tsan에서 nav 테스트가 간헐적으로 GLib 스레드 풀 내부(g_queue_pop_tail) 경합을 보고. 비계측 libglib 오탐 추정 | 묶음 QA에서 재현 여부 확인, 필요 시 TSan suppressions 또는 nav 테스트 동기화 보완 |
 | E-9 | R1-T01(진행 중)의 FsEvent에 size_delta/root_total 필드·getter, 루트 CMake에 dash 하위 디렉터리 추가가 필요하다 | 결정: 진행 중인 R1-T01에 보완 전달(2026-11-24) |
 
 ### 결정 기록 (2026-11-24, 사용자): 구현 언어 C++17 + gtkmm-3.0
