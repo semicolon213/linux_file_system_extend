@@ -1,10 +1,10 @@
 # 작업 지시서
 - Task ID / 요구사항 ID: R1-T01 core·빌드 골격 / SEC-001, SEC-003(경로 검증·보호), 공통 기반(오류 도메인, FsEvent, FsEntry)
-- 상태: BACKLOG
+- 상태: IN_PROGRESS (Codex)
 - 목표: `src/core`(fs_error, fs_path, fs_types, fs_event)를 INTERFACE_SPEC §1, EVENT_SPEC §1대로 구현하고, 모듈별 하위 CMake를 받아들이는 루트 빌드 골격과 테스트 지원 코드를 만든다.
 - 제외 범위: job/fs/mon/nav/ui 구현, SEC-002(fs 작업 몫), 시각 디자인.
-- 기준 브랜치 / SHA: ARCH-001 계약 커밋(Coordinator가 승인 후 지정)
-- 선행 작업: ARCH-001 계약 승인, R0-001 독립 QA PASS
+- 기준 브랜치 / SHA: semicolon213/design-and-r0 @ 승인 커밋(이 커밋)
+- 선행 작업: ARCH-001 계약 승인(완료). R0-001 독립 QA는 사용자 지시로 R1 묶음 QA에 합침
 - 허용 파일: `CMakeLists.txt`(루트, 단독 소유), `Makefile`, `CMakePresets.json`, `scripts/check-architecture.sh`, `src/core/**`, `tests/core/**`, `tests/support/**`, `tests/integration/CMakeLists.txt`
 - 변경 금지: `src/main.c`, `src/app_info.*`, `src/{job,fs,mon,nav,ui}/**`, `docs/**`, `harness/**`, `PRODUCT.md`, `DESIGN.md`, `.impeccable/**`, `docs/design/prototype/**`
 - 참조 계약: docs/architecture/ARCHITECTURE.md §1~4, INTERFACE_SPEC.md §0~1, EVENT_SPEC.md §1, docs/engineering/{ERROR_HANDLING,SECURITY,CODING_RULES}.md, ADR-0002, ADR-0004
