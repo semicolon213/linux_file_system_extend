@@ -1,0 +1,5 @@
+add_library(filescope_nav STATIC nav.cpp)
+target_include_directories(filescope_nav PUBLIC ${PROJECT_SOURCE_DIR}/src)
+target_compile_definitions(filescope_nav PRIVATE _GNU_SOURCE)
+target_link_libraries(filescope_nav PUBLIC filescope_core PkgConfig::GIOMM PkgConfig::SIGC)
+filescope_configure_target(filescope_nav)
