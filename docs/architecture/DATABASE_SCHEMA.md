@@ -1,0 +1,2 @@
+# SQLite 설계 초안
+테이블 events(seq PK, observed_at, kind, path BLOB, old_path BLOB, raw_mask, gap_id), snapshots(id PK, path BLOB, hash, size, captured_at, completeness), jobs(id PK, state, kind, error), settings(key PK,value), watches(id PK,path BLOB), file_index(path BLOB PK,mtime,size). events 시간/경로 인덱스. 스냅샷 본문은 별도 content-addressed 저장소. migration 버전 관리, prepared statement, WAL, 단일 writer, bounded busy retry. DB와 blob 간 장애 복구 및 orphan 정리 테스트 필수.

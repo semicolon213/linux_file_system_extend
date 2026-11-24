@@ -1,0 +1,2 @@
+# 이벤트 계약
+필드: sequence, observed_at, monotonic_ns, raw_mask, kind, watch_id, path, old_path, cookie, is_dir, origin_hint, gap_id. origin_hint는 추정이며 PID가 아니다. 이벤트는 immutable; 소비자는 ref/unref. MOVE_FROM/TO cookie를 제한 시간 내 연결하고 미매칭은 이동 진입/이탈로 표시한다. IN_Q_OVERFLOW 시 gap 기록, 재탐색 및 인덱스 재조정; 잃어버린 이력은 복원 불가 표시. IN_IGNORED 및 디렉터리 이동 시 watch registry 재검증. 읽기 이벤트는 기본 비활성; 내부 스냅샷 읽기로 인한 피드백 방지. 큐 포화 시 조용히 버리지 않는다.
