@@ -39,3 +39,12 @@
 - U-8: 기본값 승인(SECURITY 표의 보호 경로).
 - U-9: R1-T06은 U-1 범위의 DASH-001/003/005와 메인 창 시연에 필요한 UI P0(UI-001/005/007/011/012/015/016/018~022/025)를 다룬다. CFG-001은 설정 저장이 필요한 범위(즐겨찾기·창 상태)만.
 - 계약 보완(R1-T01 질의): `FsEvent *fs_event_new_internal(const FsEvent *source);` 내부 헤더 전용, 깊은 복사, refcount=1, source는 borrowed. 공개 API의 FsEvent는 opaque.
+- 변경량 1분봉 (2026-11-24, 사용자, R1): PRODUCT.md·main-window.html 하단 패널 탭. 계약 반영: mon 루트 크기 색인과 이벤트 size_delta/root_total(EVENT_SPEC §8), 루트 총용량 조회(INTERFACE_SPEC §4), dash 모듈(INTERFACE_SPEC §6, MODULE_BOUNDARIES), ADR-0006. U-4 변동 열은 이벤트 size_delta를 쓴다.
+
+## 기술 확인 (1분봉 추가분)
+
+| ID | 내용 | 닫는 방법 |
+|---|---|---|
+| E-7 | 하드 링크는 경로마다 총용량에 더해진다(중복 집계). 디스크 모듈 공통 계약의 "하드 링크 중복 집계 방지"와 다르다 | 시연 범위에서 허용 여부를 Coordinator가 결정. 필요하면 R2에서 (dev, ino) 집계로 바꿈 |
+| E-8 | 10만 파일 색인 16MiB 예산과 등록 시간은 측정 전 가정 | R1-T04 G8 기록 |
+| E-9 | R1-T01(진행 중)의 FsEvent에 size_delta/root_total 필드·getter, 루트 CMake에 dash 하위 디렉터리 추가가 필요하다 | Coordinator가 T01에 보완 전달 또는 후속 작업 지정 |

@@ -6,7 +6,7 @@
 
 - 프로젝트 코드는 GLib 할당(`g_malloc`/`g_new0`/`g_strdup`/`g_free`)만 쓴다. `malloc`/`free`는 libc가 돌려준 메모리(`realpath`, `getline` 등)를 해제할 때만 짝으로 쓴다.
 - 구조체 해제 함수는 `fs_<모듈>_<타입>_free`, NULL을 받아도 된다. 참조 카운트 타입(FsEvent)만 `ref/unref`.
-- `g_autoptr`/`g_autofree`를 쓴다. 공개 타입마다 해당 헤더에 `G_DEFINE_AUTOPTR_CLEANUP_FUNC`를 둔다(FsEvent, FsEntry, FsWatcher, FsJobQueue, FsNavHistory, FsNavBookmarks).
+- `g_autoptr`/`g_autofree`를 쓴다. 공개 타입마다 해당 헤더에 `G_DEFINE_AUTOPTR_CLEANUP_FUNC`를 둔다(FsEvent, FsEntry, FsWatcher, FsJobQueue, FsNavHistory, FsNavBookmarks, FsDash).
 
 ## 2. 소유권 요약
 
@@ -31,7 +31,9 @@
 
 - 크기 계산은 `g_size_checked_add`/`g_uint64_checked_add` 등으로 overflow를 확인한다.
 - 고정 크기 경로 버퍼를 쓰지 않는다. inotify read 버퍼만 고정 크기(최소 `sizeof(struct inotify_event) + NAME_MAX + 1`, 권장 64KiB)이며 이벤트 경계를 `len` 필드로 넘는다.
-- 상한: 전달 큐 8192 이벤트, 이동 이력 100개, 텍스트 읽기 4MiB, 이벤트 로그 UI 500행(DESIGN.md).
+- 상한: 전달 큐 8192 이벤트, 이동 이력 100개, 텍스트 읽기 4MiB, 이벤트 로그 UI 500행(DESIGN.md), dash 분 링 버퍼 60개(≥30), 지연 표본 1024개.
+- mon 크기 색인(EVENT_SPEC §8, ADR-0006) 예산: 정규 파일 10만 개(디렉터리 1만 개 가정) 기준 색인 + watch registry 합계 16MiB 이하. 산정: 파일 항목당 이름 할당(평균 이름 16B → 할당 단위 32B) + 해시 슬롯(해시·키·값, 적재율 고려 약 40B) + 크기 8B ≈ 80B → 8MiB, 디렉터리 노드(경로 조각, 표 머리, wd) 약 200B × 1만 ≈ 2MiB, 여유 6MiB. 경로 전체 문자열은 저장하지 않는다(필요할 때 노드 부모를 따라 조립). NFR-009(기본 RSS 150MiB)에 포함된다.
+- 검증: R1-T04 G8에서 10만 파일 fixture를 재귀 등록하기 전후 RSS 차이를 기록한다(측정 전 PASS 금지). 예산 초과는 FAIL이 아니라 Coordinator 보고 후 E-1과 함께 조정.
 
 ## 5. 검증
 

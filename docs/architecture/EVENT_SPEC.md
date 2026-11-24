@@ -51,8 +51,15 @@ typedef struct {
     guint64 size;
     gint64 mtime_ns;
     guint32 mode;
+    /* 크기 색인(§8) 기준 값. 계산할 수 없으면 *_known=FALSE이고 값은 0 */
+    gboolean size_delta_known;
+    gint64 size_delta;     /* 이 이벤트로 바뀐 루트 총용량(바이트, 직전 색인 값 대비). 병합되면 합계 */
+    gboolean root_total_known;
+    guint64 root_total;    /* 이 이벤트 적용 직후 watch_id 루트의 총용량. 병합되면 마지막 값 */
 } FsEvent;
 ```
+
+구조체 정의는 `core/fs_event_internal.h`에만 둔다. 공개 헤더 `core/fs_event.h`에서 FsEvent는 opaque이고 위 필드는 INTERFACE_SPEC §1의 getter로만 읽는다(OPEN_QUESTIONS 결정 기록, R1-T01 질의).
 
 - 소유권: 이벤트는 불변이고 원자적 참조 카운트를 쓴다(`fs_event_ref/unref`). 구독 콜백이 받은 배열과 이벤트는 빌려준 것이다. 보관하려면 ref한다.
 - stat 값은 이벤트보다 늦게 잰 값일 수 있다. ui는 크기 변동 표시에만 쓰고 정확한 상태가 필요하면 다시 읽는다.
@@ -100,7 +107,7 @@ typedef struct {
 ## 4. 병합 (MON-027)
 
 - 단위는 전달 배치(§7) 하나다. 배치를 넘어서 병합하지 않는다.
-- 같은 배치 안에서 같은 (kind, path)인 MODIFY끼리, ATTRIB끼리만 병합한다. 먼저 온 이벤트 자리에 남기고 `merged_count`, `last_monotonic_ns`, `raw_mask`(OR), stat 값(마지막 값)을 갱신한다.
+- 같은 배치 안에서 같은 (kind, path)인 MODIFY끼리, ATTRIB끼리만 병합한다. 먼저 온 이벤트 자리에 남기고 `merged_count`, `last_monotonic_ns`, `raw_mask`(OR), stat 값(마지막 값), `size_delta`(합계, 하나라도 미상이면 미상), `root_total`(마지막 값)을 갱신한다. 병합은 같은 루트의 다른 이벤트를 건너뛰어 뒤 위치로 옮기지 않으므로, 배치 순서대로 root_total을 따라가면 루트 총용량의 실제 경로와 같다(병합된 중간 값만 사라진다).
 - 그 사이에 같은 path의 다른 kind(DELETE, MOVE, RENAME, CREATE, CLOSE_WRITE) 이벤트가 끼면 병합하지 않는다. 즉 순서가 바뀌는 병합은 없다.
 - CREATE, DELETE, CLOSE_WRITE, 이동 계열, SELF 계열, OVERFLOW, RESYNC_DONE은 병합하지 않는다.
 
@@ -108,7 +115,8 @@ typedef struct {
 
 - RECURSIVE 루트 등록: 루트에서 깊이 우선으로 디렉터리를 `openat(O_DIRECTORY|O_NOFOLLOW)`로 걷고 각 디렉터리에 watch를 건다. 심볼릭 링크는 따라가지 않는다. 루트와 `st_dev`가 다른 디렉터리(마운트 경계)는 등록하지 않는다(ADR-0003). 등록은 watcher 스레드가 한다.
 - 비재귀 루트는 루트 디렉터리 하나만 감시한다.
-- 동적 등록: RECURSIVE 루트 안에서 디렉터리 CREATE/MOVED_IN을 받으면 그 디렉터리와 하위를 등록한 뒤 바로 내용을 스캔해, 등록 전에 생긴 항목마다 CREATE(`FS_EVENT_FLAG_SYNTHETIC`)를 만든다. 이후 같은 항목의 커널 CREATE가 중복으로 오면 그대로 전달한다(소비자는 CREATE를 멱등 처리한다).
+- 동적 등록: RECURSIVE 루트 안에서 디렉터리 CREATE를 받으면 그 디렉터리와 하위를 등록한 뒤 바로 내용을 스캔해, 등록 전에 생긴 항목마다 CREATE(`FS_EVENT_FLAG_SYNTHETIC`, size_delta는 그 항목 크기)를 만든다. 이후 같은 항목의 커널 CREATE가 중복으로 오면 그대로 전달한다(소비자는 CREATE를 멱등 처리한다). 중복 CREATE의 size_delta는 색인에 이미 있는 크기 대비라 0이 되어 총용량이 두 번 늘지 않는다.
+- 디렉터리 MOVED_IN은 하위를 등록하고 색인에 넣지만 하위 항목별 합성 이벤트는 만들지 않는다. MOVED_IN 이벤트 하나의 size_delta가 하위 전체 크기 합이다.
 - watch 수 한도: `inotify_add_watch`가 ENOSPC면 그 디렉터리 아래는 등록을 멈추고 루트를 DEGRADED(WATCH_LIMIT)로 알린다(GError `FS_ERROR_WATCH_LIMIT`, 메시지에 미등록 디렉터리 수). 다른 디렉터리 감시는 계속한다. EACCES 디렉터리는 건너뛰고 수만 기록한다(DEGRADED로 바꾸지 않음, 미결 E-3).
 - `inotify_add_watch`가 이미 등록된 wd를 돌려주면(같은 inode, 예: bind mount) 새 경로를 등록하지 않는다.
 - 겹치는 루트(같거나 조상·자손)는 add_root가 거부한다(미결 U-3).
@@ -130,6 +138,33 @@ typedef struct {
 - 메인 스레드는 배치 하나를 `events_cb` 한 번으로 넘긴다. 상태 변화는 그 배치보다 먼저 일어난 것이면 먼저 `state_cb`로 넘긴다(같은 큐로 순서 보장).
 - 목표: 원시 이벤트 수신부터 events_cb 호출까지 P95 ≤ 50ms(NFR-002의 100ms 중 ui 몫 50ms를 남긴다). 측정 전 목표다.
 
-## 8. 자체 이벤트
+## 8. 크기 색인과 size_delta (변경량 1분봉, 목록 변동 열)
+
+결정과 대안 비교는 ADR-0006. 메모리 예산은 MEMORY_MANAGEMENT §4.
+
+- 색인: watcher 스레드가 감시 디렉터리 노드마다 `이름 → 크기` 표를 둔다(경로 전체를 키로 쓰지 않는다). 크기는 `lstat`의 `st_size`(논리 크기)이고 정규 파일만 더한다. 디렉터리·심볼릭 링크·특수 파일은 0이다. 루트 총용량은 색인 합계를 따로 들고 있어 조회가 O(1)이다.
+- 범위: RECURSIVE 루트는 감시 중인 디렉터리 전체, 비재귀 루트는 루트 바로 아래 정규 파일만. 감시하지 못한 디렉터리(권한 없음, WATCH_LIMIT, 마운트 경계)는 빠지고 그 루트는 `total_partial=TRUE`(FsWatchInfo)다.
+- 구축: 루트 등록·재탐색 때 재귀 등록과 같은 순회에서 `fstatat(dirfd, name, AT_SYMLINK_NOFOLLOW)`로 채운다. 등록이 끝나 ACTIVE가 되기 전(REGISTERING)에는 루트 총용량이 미상이고 그 사이 이벤트의 size_delta·root_total도 미상이다.
+- 하드 링크는 경로마다 따로 더한다(중복 집계, 미결 E-7). 희소 파일은 논리 크기.
+
+| kind | size_delta 계산 | 색인 갱신 |
+|---|---|---|
+| CREATE (파일) | 새 lstat 크기 − 색인 크기(없으면 0) | 추가·갱신 |
+| CREATE (디렉터리) | 0 (하위 항목은 합성 CREATE가 각자 운반) | 노드 추가 |
+| MODIFY, CLOSE_WRITE, ATTRIB | 새 lstat 크기 − 색인 크기 | 갱신 |
+| DELETE | −색인 크기 | 삭제 |
+| MOVED_OUT | −하위 전체 합(파일이면 그 크기) | 하위 노드 삭제 |
+| MOVED_IN | +하위 전체 합(스캔 결과) | 하위 노드 추가 |
+| RENAME, MOVE (같은 루트 안) | 0 | 노드·이름만 옮김 |
+| DELETE_SELF, MOVE_SELF, UNMOUNT(루트) | 미상 | 루트 색인 폐기 |
+| UNMOUNT(하위) | −하위 합 | 하위 삭제 |
+| OVERFLOW | 미상 | 재탐색에서 재구축 |
+| RESYNC_DONE | 재구축 후 총용량 − 유실 직전 총용량 | 재구축 결과로 교체 |
+
+- 미상이 되는 경우: lstat 실패(사이에 삭제됨 등)면서 색인에도 없음, 루트가 REGISTERING, 루트 색인 폐기 뒤. 미상인 이벤트도 색인은 할 수 있는 만큼 갱신한다(lstat 실패한 MODIFY는 색인 값을 유지).
+- 순서 보장: size_delta와 root_total은 watcher 스레드가 이벤트를 정규화하는 순서대로 계산한다. 같은 루트 이벤트를 수신 순으로 따라가면 `root_total[n] = root_total[n-1] + size_delta[n]`이 성립한다(둘 다 known일 때). 테스트 불변식으로 쓴다.
+- 소비자: ui 파일 목록 변동 열(직전 이벤트 대비 증감, OPEN_QUESTIONS U-4)과 dash 1분봉(MODULE_BOUNDARIES)은 이 두 값만 쓰고 파일을 다시 stat하지 않는다.
+
+## 9. 자체 이벤트
 
 R1은 앱이 직접 한 파일 작업의 이벤트도 외부 이벤트와 똑같이 전달한다(origin_hint=UNKNOWN). 구분은 MON-032(P2). 내부 읽기로 인한 피드백은 읽기 계열 mask를 등록하지 않으므로 생기지 않는다.
