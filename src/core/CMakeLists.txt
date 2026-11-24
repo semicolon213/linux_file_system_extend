@@ -1,0 +1,5 @@
+add_library(filescope_core STATIC error.cpp event.cpp fd.cpp path.cpp)
+target_include_directories(filescope_core PUBLIC ${PROJECT_SOURCE_DIR}/src)
+target_compile_definitions(filescope_core PRIVATE _GNU_SOURCE)
+target_link_libraries(filescope_core PUBLIC PkgConfig::GLIBMM PkgConfig::GIO)
+filescope_configure_target(filescope_core)
