@@ -1,0 +1,5 @@
+add_executable(test_fs test_fs.cpp)
+target_link_libraries(test_fs PRIVATE filescope_fs filescope_test_support)
+filescope_configure_target(test_fs)
+filescope_add_test(test_fs test_fs)
+set_tests_properties(test_fs PROPERTIES LABELS unit)
