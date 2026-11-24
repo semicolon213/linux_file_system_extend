@@ -22,8 +22,8 @@
 | R0-001 빌드·테스트 하네스 (C) | 대체됨 → R0-002 | - |
 | R0-002 C++ 전환 (빌드 하네스) | VERIFY (b7ca5d3, make verify 0, 독립 QA는 R1 묶음) | ADR-0007, 의존성 설치 |
 | R1-T01 core C++ 포팅 | VERIFY (1bdb270, make verify 0) | R0-002 |
-| R1-T02 job C++ 포팅 | IN_PROGRESS (Codex) | R1-T01 |
-| R1-T03 fs | BACKLOG (C++ 계약, 이전 C 시도 폐기) | R1-T01, R1-T02 |
+| R1-T02 job C++ 포팅 | VERIFY (91ba40b) | R1-T01 |
+| R1-T03 fs | IN_PROGRESS (Codex) | R1-T01, R1-T02 |
 | R1-T04 mon | IN_PROGRESS (Codex) | R1-T01 |
 | R1-T05 nav C++ 포팅 | VERIFY (2eab368) | R1-T01 |
 | R1-T06 ui | BACKLOG | R1-T03, R1-T04, R1-T05, R1-T07 |
