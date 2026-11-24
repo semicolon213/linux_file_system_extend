@@ -1,0 +1,10 @@
+set(mon_test_sources test_mon_api.cpp test_mon_normalize.cpp)
+
+foreach(source IN LISTS mon_test_sources)
+  get_filename_component(target ${source} NAME_WE)
+  add_executable(${target} ${source})
+  target_link_libraries(${target} PRIVATE filescope_mon filescope_test_support)
+  filescope_configure_target(${target})
+  filescope_add_test(${target} ${target})
+  set_tests_properties(${target} PROPERTIES LABELS unit)
+endforeach()

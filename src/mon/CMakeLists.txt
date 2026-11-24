@@ -1,0 +1,5 @@
+add_library(filescope_mon STATIC mon.cpp)
+target_include_directories(filescope_mon PUBLIC ${PROJECT_SOURCE_DIR}/src)
+target_compile_definitions(filescope_mon PRIVATE _GNU_SOURCE)
+target_link_libraries(filescope_mon PUBLIC filescope_core PkgConfig::GLIBMM PkgConfig::SIGC)
+filescope_configure_target(filescope_mon)
