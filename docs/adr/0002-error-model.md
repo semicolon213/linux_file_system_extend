@@ -1,6 +1,6 @@
 # ADR-0002 오류 모델: GError 단일 도메인 FS_ERROR
 
-상태: 제안 (2026-11-24, ARCH-001)
+상태: 제안 (2026-11-24, ARCH-001). 표현 방식(GError)은 ADR-0008로 대체(core::Error/Result). 코드 이름·의미·도메인 하나 원칙은 유지.
 
 ## 맥락
 ERROR_HANDLING 초안은 "GError 또는 모듈 오류 enum"을 열어 두었다. GTK/GIO 콜백, GTask, 작업 큐 결과가 모두 GError를 쓴다.

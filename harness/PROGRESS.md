@@ -6,11 +6,11 @@ Coordinator가 갱신한다. 작업별 ID, 담당, 기준 SHA, 상태, 차단 �
 
 | 단계 | 상태 |
 |---|---|
-| 요구사항·설계 계약 | R1 계약 승인(ARCH-001, 8615d98). 사용자 결정 U-1~U-9 기록 완료(§3 결정 기록) |
-| 디자인 (메인 창, 트레이) | APPROVED (사용자 확정, 커밋 6d621d5). 루트 PRODUCT.md·DESIGN.md, docs/design/prototype |
-| 빌드·테스트 하네스 (R0-001) | VERIFY (Codex 개발자 검증 전 게이트 통과, 121ef2f. 독립 QA는 R1 묶음과 함께) |
-| R1-T01 core, R1-T02 job, R1-T05 nav | Codex 구현 완료, `semicolon213/design-and-r0`에 병합, 개발자 게이트 통과. 독립 QA 대기(R1 묶음) |
-| R1-T03 fs, R1-T04 mon, R1-T07 dash | IN_PROGRESS, 일시 중지(Codex 사용량 한도) |
+| 요구사항·설계 계약 | R1 계약 승인(ARCH-001, 8615d98). 사용자 결정 U-1~U-9 기록 완료(§3 결정 기록). C++17 + gtkmm-3.0 판으로 갱신(ADR-0007 승인, ADR-0008 제안, 2026-11-24) |
+| 디자인 (메인 창, 트레이) | APPROVED (사용자 확정, 커밋 6d621d5). 루트 PRODUCT.md·DESIGN.md, docs/design/prototype. 언어 변경과 무관하게 유효 |
+| 빌드·테스트 하네스 | R0-001(C) 대체됨. R0-002 C++ 전환은 BLOCKED: 사용자가 WSL Ubuntu-24.04에 `libgtkmm-3.0-dev` 설치(sudo)를 확인해야 READY |
+| R1-T01 core, R1-T02 job, R1-T05 nav | C 구현(병합됨)은 C++ 포팅 대상. BACKLOG: T01은 R0-002 후, T02·T05는 T01 후 READY. 수용 조건 동일 |
+| R1-T03 fs, R1-T04 mon, R1-T07 dash | C 시도 중단·폐기. BACKLOG(C++ 계약). T04·T07은 T01 후, T03은 T01·T02 후 |
 | R1-T06 ui | BACKLOG (T03·T04·T05·T07 이후) |
 | UI 및 고급 기능 (R2~) | PLANNED |
 
@@ -20,6 +20,7 @@ Coordinator가 갱신한다. 작업별 ID, 담당, 기준 SHA, 상태, 차단 �
 - 2026-11-24: ARCH-001 계약 제안(8615d98)과 승인, R1-T01 배정(6c680c3). 사용자 결정 기록(7a8a406), 변경량 1분봉 추가(64ad2b4~6f64a98), E-7·E-9 결정(48cb551).
 - 2026-11-24: R1-T01(1de4d68), R1-T05(47f8824), R1-T02(49daab4) 병합.
 - 2026-11-24: 문서를 핵심 문서 체계로 통합(AGENTS.md 목차, docs/ 6개, harness/ 4개). 옛 문서 이름 대응은 docs/ARCHITECTURE.md §8.
+- 2026-11-24: 구현 언어를 C++17 + gtkmm-3.0으로 전환(사용자 결정, 수업 요구사항). ADR-0007·0008, docs/DESIGN.md 인터페이스 C++ 판, ARCHITECTURE·ENGINEERING·TESTING 갱신. 작업 재편: R0-002 신설(BLOCKED, gtkmm 설치 대기), R1-T01/T02/T05는 C++ 포팅, R1-T03/T04/T07의 C 시도는 중단·폐기 후 BACKLOG.
 
 ## 2. 요구사항 추적표
 
@@ -76,7 +77,7 @@ Coordinator가 갱신한다. 작업별 ID, 담당, 기준 SHA, 상태, 차단 �
 | MON-027 | R1-T04 | TC-MON-027: 배치 내 MODIFY 병합, 순서 보존 | PLANNED |
 | MON-028 | R1-T04 | TC-MON-028: cookie 짝·시간창 만료 | PLANNED |
 | MON-029 | R1-T04, R1-T06 | TC-MON-029: gap → 재탐색 → RESYNC_DONE, 큐 포화 (E03) | PLANNED |
-| JOB-001 | R1-T02 | TC-JOB-001: FIFO, 동시 1개 | VERIFY (R1-T02 병합, 독립 QA 대기) |
+| JOB-001 | R1-T02 | TC-JOB-001: FIFO, 동시 1개 | PLANNED (C 구현은 C++ 포팅 대상, ADR-0007) |
 | JOB-002 | R1-T02, R1-T06 | TC-JOB-002: 메인 루프 비차단, 실행 중 UI 입력(NFR-015) | PLANNED |
 | JOB-003 | R1-T02, R1-T06 | TC-JOB-003: 10Hz 진행, indeterminate | PLANNED |
 | JOB-008 | R1-T02, R1-T06 | TC-JOB-008: QUEUED/RUNNING 취소, 부분 결과 | PLANNED |
@@ -124,7 +125,7 @@ Coordinator가 갱신한다. 작업별 ID, 담당, 기준 SHA, 상태, 차단 �
 | E-3 | 재귀 등록 중 권한 없는 하위 디렉터리를 DEGRADED로 알릴지 | R1-T04 구현 중 UI 표시 필요성과 함께 Coordinator 결정 |
 | E-4 | 작업 대기열 상한(현재 없음) | 사용 패턴 확인 후 JOB-010(P1)에서 결정 |
 | E-5 | 텍스트 읽기 한도 4MiB의 근거 | FS-005 편집 화면 성능 확인 후 조정 |
-| E-6 | R0-001은 독립 QA 전(VERIFY) 상태다. R1-T01 선행 조건 | R1 묶음 QA에서 처리 |
+| E-6 | R0-001(C)은 대체됨. R0-002(C++)의 독립 QA | R1 묶음 QA에서 처리 |
 
 ### 결정 기록 (2026-11-24, 사용자)
 
@@ -137,7 +138,7 @@ Coordinator가 갱신한다. 작업별 ID, 담당, 기준 SHA, 상태, 차단 �
 - U-7: 기본값 승인(앱 내부 클립보드, 자체 bookmarks.ini).
 - U-8: 기본값 승인(ENGINEERING 보안 표의 보호 경로).
 - U-9: R1-T06은 U-1 범위의 DASH-001/003/005와 메인 창 시연에 필요한 UI P0(UI-001/005/007/011/012/015/016/018~022/025)를 다룬다. CFG-001은 설정 저장이 필요한 범위(즐겨찾기·창 상태)만.
-- 계약 보완(R1-T01 질의): `FsEvent *fs_event_new_internal(const FsEvent *source);` 내부 헤더 전용, 깊은 복사, refcount=1, source는 borrowed. 공개 API의 FsEvent는 opaque.
+- 계약 보완(R1-T01 질의, C판. C++ 판은 `core::make_event`로 대체, ADR-0008): `FsEvent *fs_event_new_internal(const FsEvent *source);` 내부 헤더 전용, 깊은 복사, refcount=1, source는 borrowed. 공개 API의 FsEvent는 opaque.
 - 변경량 1분봉 (2026-11-24, 사용자, R1): PRODUCT.md·main-window.html 하단 패널 탭. 계약 반영: mon 루트 크기 색인과 이벤트 size_delta/root_total(DESIGN 이벤트 §8), 루트 총용량 조회(DESIGN 인터페이스 §4), dash 모듈(DESIGN 인터페이스 §6, ARCHITECTURE §7), ADR-0006. U-4 변동 열은 이벤트 size_delta를 쓴다.
 - 독립 QA 단위 (2026-11-24, 사용자): 독립 QA는 작업마다 하지 않고 큰 작업 단위(R1 전체)로 묶어 한 번 한다. R0-001도 R1 묶음 QA에 포함한다(E-6).
 - 작업 분담 (2026-11-24, 사용자): Codex가 코드와 문서 수정을 모두 구현하고, Claude 메인 세션은 배정·리뷰·병합만 한다. R1-T03·T04·T07은 Codex 사용량 한도로 일시 중지.
@@ -150,3 +151,11 @@ Coordinator가 갱신한다. 작업별 ID, 담당, 기준 SHA, 상태, 차단 �
 | E-7 | 하드 링크는 경로마다 총용량에 더해진다(중복 집계). 디스크 모듈 공통 계약의 "하드 링크 중복 집계 방지"와 다르다 | 결정(2026-11-24 Coordinator): R1 시연 범위에서 허용. R2 이력·디스크 작업에서 (dev, ino) 집계로 교체 |
 | E-8 | 10만 파일 색인 16MiB 예산과 등록 시간은 측정 전 가정 | R1-T04 G8 기록 |
 | E-9 | R1-T01(진행 중)의 FsEvent에 size_delta/root_total 필드·getter, 루트 CMake에 dash 하위 디렉터리 추가가 필요하다 | 결정: 진행 중인 R1-T01에 보완 전달(2026-11-24) |
+
+### 결정 기록 (2026-11-24, 사용자): 구현 언어 C++17 + gtkmm-3.0
+
+- 결정: 수업 요구사항으로 구현 언어를 C++17로 바꾼다. GUI 툴킷은 GTK3를 유지하고 C++ 바인딩 gtkmm-3.0(glibmm, giomm, sigc++)을 쓴다. ADR-0007(승인), ADR-0001 상태 줄에 반영.
+- 유지: 루트 DESIGN.md의 시각 디자인과 GTK3 구현 메모(gtkmm 클래스로 읽음), docs/DESIGN.md의 모든 수치와 동작(이벤트 필드, size_delta/root_total, MOVE 시간창 50ms, 배치 16ms/256개, 전달 큐 8192, 작업 상태, 오류 코드, 보호 경로, 탐색 동작, 1분봉 규칙), 작업별 수용 조건.
+- C++ 관용 규칙(Architect, ADR-0008): 오류는 `core::Error` + `core::Result<T>`(예외는 모듈·스레드 경계를 넘지 않음), 메인 스레드 콜백은 sigc++·다른 스레드 함수는 `std::function`, 스레드→메인 전달은 `Glib::Dispatcher`, RAII(`new`/`delete` 금지), 경로는 `std::string` 원본 바이트·화면은 `Glib::ustring`, 배치는 `src/<m>/` 유지(`.hpp`/`.cpp`), 테스트는 GLib `g_test` 유지.
+- 작업 재편: R0-001(C 하네스)은 R0-002로 대체. R1-T01/T02/T05는 C++ 포팅(수용 조건 동일). R1-T03/T04/T07의 C 시도(일시 중지 상태)는 중단하고 결과를 버린다. 새 C++ 계약으로 BACKLOG에서 다시 시작한다.
+- 선행 조건(BLOCKED): R0-002는 사용자가 WSL Ubuntu-24.04에 `sudo apt install libgtkmm-3.0-dev`를 실행했다고 확인한 뒤에만 READY가 된다(에이전트는 sudo를 쓰지 않는다).

@@ -4,8 +4,8 @@
 
 ## 프로젝트
 
-- Ubuntu 22.04/24.04 LTS용 C17/GTK3 네이티브 파일 탐색기. 외부 터미널·IDE의 파일 변경을 inotify로 새로고침 없이 보여 주고 파일 작업을 안전하게 수행한다.
-- 기술: C17, GTK3, GLib/GIO, inotify, SQLite(R2부터), CMake/Ninja. 구조: Modular Monolith + Event-Driven + Layered(docs/ARCHITECTURE.md). 아키텍처 변경은 ADR(docs/adr/) 승인 후 진행한다.
+- Ubuntu 22.04/24.04 LTS용 C++17/GTK3(gtkmm-3.0) 네이티브 파일 탐색기. 외부 터미널·IDE의 파일 변경을 inotify로 새로고침 없이 보여 주고 파일 작업을 안전하게 수행한다.
+- 기술: C++17, GTK3(gtkmm-3.0, glibmm/giomm, sigc++), GLib/GIO, inotify, SQLite(R2부터), CMake/Ninja. 구조: Modular Monolith + Event-Driven + Layered(docs/ARCHITECTURE.md). 아키텍처 변경은 ADR(docs/adr/) 승인 후 진행한다.
 - 현재 상태: harness/PROGRESS.md, 작업 목록: harness/TASKS.md.
 
 ## 필수 규칙

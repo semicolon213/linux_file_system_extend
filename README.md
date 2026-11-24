@@ -1,13 +1,13 @@
 # FileScope
 
-FileScope is a native GTK3 application for Linux. This bootstrap contains the application window and the build and test harness; file-management features come later.
+FileScope is a native GTK3 application for Linux, written in C++17 with gtkmm-3.0. This bootstrap contains the application window and the build and test harness; file-management features come later.
 
 ## Build prerequisites
 
 On Ubuntu 22.04 or 24.04, install the required and developer packages listed in `docs/ENGINEERING.md` (의존성):
 
 ```bash
-sudo apt install build-essential cmake ninja-build pkg-config libgtk-3-dev libsqlite3-dev libayatana-appindicator3-dev xvfb clang-format clang-tidy
+sudo apt install build-essential cmake ninja-build pkg-config libgtk-3-dev libgtkmm-3.0-dev libsqlite3-dev libayatana-appindicator3-dev xvfb clang-format clang-tidy
 ```
 
 ## Build and test

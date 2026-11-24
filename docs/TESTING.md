@@ -9,8 +9,8 @@
 | G1 빌드 | `make build` | 종료 코드 0, 프로젝트 코드 경고 없음(경고=오류) | 모든 구현 작업 |
 | G2 단위 | `make test` | 관련 테스트 전체 성공(라벨 `unit`) | 모든 구현 작업 |
 | G3 통합 | `make integration` | 실제 임시 파일 시스템 시나리오 성공(라벨 `integration`) | 모든 구현 작업 |
-| G4 스타일·의존성 | `make format-check lint architecture` | 위반 없음. `architecture`는 `scripts/check-architecture.sh`(모듈 금지 include, `_internal.h`/`_testing.h` 규칙, `sqlite3.h`는 `src/his/`만) | 모든 구현 작업 |
-| G5 메모리 | `make asan ubsan` | sanitizer 오류 없음(누수 포함, `scripts/lsan.supp`는 GLib/GTK 전역 할당만 억제) | C 코드 변경 |
+| G4 스타일·의존성 | `make format-check lint architecture` | 위반 없음. `architecture`는 `scripts/check-architecture.sh`(모듈 금지 include, `_internal.hpp`/`_testing.hpp` 규칙, 비 ui 모듈의 gtkmm include 금지, `sqlite3.h`는 `src/his/`만) | 모든 구현 작업 |
+| G5 메모리 | `make asan ubsan` | sanitizer 오류 없음(누수 포함, `scripts/lsan.supp`는 GLib/GTK/glibmm/gtkmm 전역 할당만 억제). UBSan은 `-fno-sanitize-recover=undefined`로 첫 오류에서 테스트가 실패해야 한다 | C++ 코드 변경 |
 | G6 동시성 | `make tsan` | 관련 모듈 경쟁 상태 없음 | 동시성 변경 |
 | G7 GUI | `make e2e` | Xvfb 실행(`scripts/e2e-smoke.sh`), 사용자 시나리오 및 캡처 검증 | UI 변경 |
 | G8 부하 | `make stress benchmark` | 합의된 기준 충족, 수치는 §5 형식으로 기록 | 성능·감시 변경 |
@@ -18,6 +18,7 @@
 - `make verify`는 build, test, format-check, lint, architecture, asan, ubsan, tsan, e2e를 차례로 실행한다(G1, G2, G4~G7). G3·G8은 따로 실행한다.
 - `integration`·`stress`·`benchmark`는 `ctest --preset debug -L <라벨> --no-tests=error`라 해당 라벨 테스트가 없으면 비0으로 끝난다. 이 경우 BLOCKED(또는 NOT_RUN)이며 PASS가 아니다. 해당 없음은 QA 근거와 함께 N/A로 적는다.
 - 통합 시 적용 가능한 게이트 전체를 다시 실행한다. sanitizer는 별도 빌드에서 실행한다. 로그와 SHA를 보존한다.
+- C++ sanitizer: 프리셋마다 `-fsanitize=<종류> -fno-omit-frame-pointer`를 컴파일과 링크 모두에 준다(libstdc++ 컨테이너 포함). UBSan은 `-fno-sanitize-recover=undefined`. TSan은 기존처럼 `setarch -R`로 실행한다. glibmm/gtkmm/sigc++는 계측되지 않은 시스템 라이브러리이므로, 그 안에서 난 TSan 보고를 억제해야 하면 `scripts/tsan.supp`에 항목마다 이유를 적고 Coordinator 승인을 받는다(프로젝트 코드 보고는 억제 금지).
 
 ## 2. 완료 조건 (Definition of Done)
 
@@ -33,8 +34,8 @@
 ## 3. 리뷰 체크리스트 (독립 QA)
 
 - [ ] 요구사항과 diff 일치, 범위 외 변경 없음
-- [ ] 실패 반환값 및 errno/GError 처리
-- [ ] 할당·해제, FD·watch·스레드 종료 경로 확인
+- [ ] 실패 반환값(`core::Result`) 및 errno 처리, `Glib::Error`를 경계에서 잡음, 모듈·스레드 경계를 넘는 예외 없음
+- [ ] RAII(앱 코드에 `new`/`delete`/`malloc` 없음), FD·watch·스레드 종료 경로 확인
 - [ ] GTK 메인 스레드 규칙 및 큐 크기 제한
 - [ ] 심볼릭 링크, 경로 탈출, 권한, 덮어쓰기 검증
 - [ ] inotify 이동 cookie, overflow, 재귀 감시 누락 대응
@@ -42,7 +43,7 @@
 - [ ] 실제 테스트 결과와 SHA 확인
 - [ ] UI 상태·접근성·스크린샷 확인 (해당 시)
 - [ ] 민감 정보 로그 노출 및 실제 사용자 파일 접근 없음
-- [ ] 메모리·동시성: 소유권(transfer) 표기, 잠금 순서와 잠금 중 금지 호출, free 반환 후 콜백 없음(docs/DESIGN.md 메모리·스레드 부분)
+- [ ] 메모리·동시성: 소유권(값·unique_ptr·EventPtr), 잠금 순서와 잠금 중 금지 호출, 다른 스레드에서 sigc++·GTK 접근 없음, 소멸(shutdown) 반환 후 신호 없음(docs/DESIGN.md 메모리·스레드 부분)
 
 ## 4. 테스트 전략
 
