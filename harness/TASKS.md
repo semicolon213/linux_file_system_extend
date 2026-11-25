@@ -280,7 +280,7 @@ R2 의존 순서: {R2-T00, R2-T01 병렬} → {R2-T02(T00 뒤), R2-T03, R2-T04, 
 
 - 범위는 사용자 결정(PROGRESS 결정 기록 "R2 범위")과 docs/PRD.md §3. 계약은 DESIGN 인터페이스 §3·§4·§7 "R2 추가", §8~§11, 이벤트 §10, 스레드·상태·메모리 R2 항목, DB 스키마, ADR-0009(제안). R2 계약은 제안 상태이며 Coordinator·사용자 승인 뒤 계약이 필요한 작업을 READY로 올린다.
 - 모든 파일 테스트는 임시 디렉터리 안, HOME·XDG_*는 임시 경로. his 테스트는 `Options::data_dir`도 임시 경로(TESTING §8).
-- ui 작업의 시각 기준은 루트 DESIGN.md와 docs/design/prototype/(main-window.html, tray.html)이다. 색·간격·글꼴·레이아웃·아이콘을 새로 정하지 않는다. 시안 없는 화면은 PROGRESS 미결 U-10을 따르고 코드에 `// design-pending: U-10`을 단다.
+- ui 작업의 시각 기준은 루트 DESIGN.md와 docs/design/prototype/(main-window.html, tray.html)이다. 색·간격·글꼴·레이아웃·아이콘을 새로 정하지 않는다. R2 화면(전체 이력, 이력 끔, 트레이 경로 4개 이상, 검색, 휴지통, 미리보기·저장 충돌)은 docs/design/prototype/r2-screens.html과 루트 DESIGN.md "R2 화면"을 따른다(U-10 시안 확정, 2026-11-25).
 - 게이트 표기: G1 build, G2 test, G3 integration, G4 format-check·lint·architecture, G5 asan·ubsan, G6 tsan, G7 e2e, ui-interaction(`make ui-interaction`), G8 stress·benchmark. 병합 전 `make verify`.
 
 ## R2-T00 R1 QA Low 정리 (N1~N3)
@@ -546,7 +546,7 @@ R2 의존 순서: {R2-T00, R2-T01 병렬} → {R2-T02(T00 뒤), R2-T03, R2-T04, 
 - Task ID / 요구사항 ID: R2-T11 / SRC-001, SRC-003, SRC-004, TRASH-001, TRASH-002, TRASH-003, TRASH-005, TRASH-006의 화면, PRE-001(텍스트 미리보기), PRE-003(텍스트 편집)
 - 상태: BACKLOG (R2-T07·R2-T08·R2-T10 병합 후, 사용자 결정 U-10·U-11 뒤 READY)
 - 목표: DESIGN 인터페이스 §7 "R2 추가"의 검색 화면, 휴지통 화면, 텍스트 미리보기·편집 보강(UTF-8 검사, 읽기 전용 모드, 저장 충돌 선택)을 만든다. PRE-003은 R1 FS-005 편집기를 그대로 쓰고 새 편집기를 만들지 않는다. `src/ui/CMakeLists.txt`에 search·trash 링크.
-- 시각 기준: 머리줄 검색 칸과 사이드바 "휴지통"은 docs/design/prototype/main-window.html. 검색 결과·휴지통 목록·미리보기·저장 충돌 화면은 시안이 없어 U-10을 따른다.
+- 시각 기준: 머리줄 검색 칸과 사이드바 "휴지통"은 docs/design/prototype/main-window.html. 검색 결과·휴지통 목록·미리보기·저장 충돌 화면은 docs/design/prototype/r2-screens.html과 루트 DESIGN.md "R2 화면"(U-10 시안 확정).
 - 제외 범위: 내용·정규식 검색, 휴지통 검색·자동 정리, 코드 강조·이미지·PDF 미리보기(R3).
 - 기준 브랜치 / SHA: R2-T10 통합 커밋(R2-T07, R2-T08 포함)
 - 선행 작업: R2-T07, R2-T08, R2-T10, U-10, U-11

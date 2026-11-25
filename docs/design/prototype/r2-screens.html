@@ -1,0 +1,834 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FileScope R2 화면</title>
+<!--
+  FileScope R2 화면 시안 (U-10). 검색 결과·확장자 거르기, 주소 입력(Ctrl+L, U-11), 휴지통 목록·확인,
+  전체 이력·삭제 파일 복원·이력 끔, 텍스트 미리보기·편집·저장 충돌, 트레이 감시 경로 4개 이상.
+  상태: 위쪽 전환줄 또는 ?s=<상태>. 토큰·컴포넌트 CSS는 main-window.html에서 그대로 가져왔다(바꾸지 않음).
+-->
+<style>
+:root{
+  --bg:#10151c; --bg-2:#141b24; --raise:#18202a; --hover:#1c2632; --line:#263241; --line-soft:#1b2430;
+  --ink:#e6e9ee; --ink-2:#b9c1cc; --dim:#8a94a3;
+  --up:#f0525a; --up-wash:rgba(240,82,90,.11); --up-flash:rgba(240,82,90,.42);
+  --down:#4d9bff; --down-wash:rgba(77,155,255,.11); --down-flash:rgba(77,155,255,.40);
+  --sel:#f5c84b; --sel-wash:rgba(245,200,75,.10); --line-float:#33435a; --vol-mid:#5f6a7a;
+  --add:#3fb950; --add-wash:rgba(63,185,80,.14); --del:#f85149; --del-wash:rgba(248,81,73,.14);
+  --sans:"Ubuntu","Noto Sans KR","Noto Sans CJK KR","Cantarell",system-ui,sans-serif;
+  --mono:"Ubuntu Mono","Noto Sans Mono","DejaVu Sans Mono",ui-monospace,monospace;
+  --ease:cubic-bezier(.16,1,.3,1);
+  --sidebar:240px; --insp:440px; --log:232px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;background:var(--bg);color:var(--ink);font:13px/1.45 var(--sans);caret-color:var(--sel)}
+::selection{background:var(--sel);color:var(--bg)}
+*{scrollbar-width:thin;scrollbar-color:#2f3d4f transparent}
+::-webkit-scrollbar{width:10px;height:10px}::-webkit-scrollbar-thumb{background:#2f3d4f;border:3px solid var(--bg);border-radius:6px}
+button,input{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--sel);outline-offset:-2px}
+.num{font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:13px}
+.ico{width:16px;height:16px;flex:none;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+.up{color:var(--up)}.down{color:var(--down)}.flat{color:var(--dim)}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+
+.app{display:grid;height:100vh;min-width:1024px;grid-template-rows:48px 34px minmax(0,1fr) var(--log) 28px}
+
+/* 헤더바 */
+.hb{display:flex;align-items:center;gap:12px;padding:0 12px;background:var(--raise);border-bottom:1px solid var(--line)}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:30px;min-width:30px;padding:0 8px;border:1px solid var(--line);border-radius:4px;background:transparent;cursor:pointer;color:var(--ink-2)}
+.btn:hover{background:var(--hover);color:var(--ink)}
+.btn:disabled{opacity:.4;cursor:default;background:transparent}
+.btn[aria-pressed="true"]{color:var(--ink);border-color:#3a4a5e;background:var(--hover)}
+.btn.primary{border-color:var(--ink-2);color:var(--ink)}
+.grp{display:flex;gap:4px}
+.crumb{display:flex;align-items:center;min-width:0;overflow:hidden}
+.crumb button{border:0;background:none;padding:4px 6px;border-radius:4px;color:var(--dim);cursor:pointer;white-space:nowrap}
+.crumb button:hover{color:var(--ink);background:var(--hover)}
+.crumb button[aria-current]{color:var(--ink);font-weight:600;font-size:14px}
+.crumb .ico{width:12px;height:12px;color:#3d4c5f}
+.search{display:flex;align-items:center;gap:6px;height:30px;padding:0 8px;border:1px solid var(--line);border-radius:4px;width:220px;color:var(--dim)}
+.search input{border:0;background:none;outline:0;width:100%;color:var(--ink)}
+.search:focus-within{border-color:var(--sel)}
+.metrics{margin-left:auto;display:flex;align-items:baseline;gap:18px;white-space:nowrap;color:var(--dim);font-size:12px}
+.metrics b{font-family:var(--mono);font-size:17px;font-weight:600;color:var(--ink);margin-left:4px;font-variant-numeric:tabular-nums}
+
+/* 탭 */
+.tabs{display:flex;align-items:stretch;border-bottom:1px solid var(--line);background:var(--bg)}
+.tab{display:flex;align-items:center;gap:8px;padding:0 10px 0 14px;border:0;border-right:1px solid var(--line-soft);background:none;color:var(--dim);cursor:pointer;max-width:220px}
+.tab[aria-selected="true"]{color:var(--ink);box-shadow:inset 0 -2px 0 var(--sel)}
+.tab .x{display:inline-flex;padding:2px;border-radius:3px;color:var(--dim)}.tab .x:hover{color:var(--ink);background:var(--hover)}
+.tab .x .ico{width:12px;height:12px}
+.tab-add{border:0;background:none;color:var(--dim);padding:0 12px;cursor:pointer}.tab-add:hover{color:var(--ink)}
+
+/* 작업 영역 */
+.work{display:grid;grid-template-columns:var(--sidebar) minmax(0,1fr) var(--insp);min-height:0}
+.app.no-insp .work{grid-template-columns:var(--sidebar) minmax(0,1fr) 0}
+.app.no-insp .insp{display:none}
+
+.side{border-right:1px solid var(--line);overflow:auto;padding:8px 0 16px}
+.side h2{font-size:11px;font-weight:600;color:var(--dim);padding:14px 16px 6px}
+.side h2:first-child{padding-top:6px}
+.side ul{list-style:none}
+.node{display:flex;align-items:center;gap:6px;width:100%;padding:4px 12px 4px calc(12px + var(--d,0) * 14px);border:0;background:none;text-align:left;cursor:pointer;color:var(--ink-2)}
+.node:hover{background:var(--hover);color:var(--ink)}
+.node[aria-current="true"]{background:var(--sel-wash);color:var(--ink);box-shadow:inset 0 1px 0 var(--sel),inset 0 -1px 0 var(--sel)}
+.node .tw{width:12px;height:12px;color:var(--dim)}
+.node .lbl{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.node .cnt{font-family:var(--mono);font-size:12px}
+.watch-dot{width:7px;height:7px;border-radius:50%;background:var(--ink);flex:none}
+.watch-dot.off{background:transparent;border:1px solid var(--dim)}
+
+/* 목록 */
+.list{display:flex;flex-direction:column;min-width:0;min-height:0;border-right:1px solid var(--line)}
+.scroller{overflow:auto;flex:1;min-height:0}
+table{width:100%;border-collapse:collapse;table-layout:fixed}
+.files th{position:sticky;top:0;z-index:1;background:var(--bg);font-size:12px;font-weight:500;color:var(--dim);text-align:left;padding:0;border-bottom:1px solid var(--line);height:32px}
+.files th button{width:100%;height:32px;padding:0 12px;border:0;background:none;text-align:inherit;cursor:pointer;color:inherit;display:flex;align-items:center;gap:4px}
+.files th.r button{justify-content:flex-end}
+.files th button:hover{color:var(--ink)}
+.files th[aria-sort] button{color:var(--ink)}
+.files th .ico{width:10px;height:10px}
+.r{text-align:right}
+.files td{height:34px;padding:0 12px;border-bottom:1px solid var(--line-soft);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:background-color 1.6s ease}
+.files tr{cursor:default}
+.files tbody tr:hover td{background:var(--hover)}
+.nm{display:flex;align-items:center;gap:8px;min-width:0}
+.nm span{overflow:hidden;text-overflow:ellipsis;font-size:14px;font-weight:500}
+.nm .ico{color:var(--dim)}
+.files tr.dir .nm span{font-weight:600}
+.files tr[aria-selected="true"] td{background:var(--sel-wash);box-shadow:inset 0 1px 0 var(--sel),inset 0 -1px 0 var(--sel)}
+.files tr.recent-up td{background:var(--up-wash)}
+.files tr.recent-down td{background:var(--down-wash)}
+.files tr.tick-up td{animation:tick-up .6s var(--ease)}
+.files tr.tick-down td{animation:tick-down .6s var(--ease)}
+@keyframes tick-up{from{background:var(--up-flash)}to{background:var(--up-wash)}}
+@keyframes tick-down{from{background:var(--down-flash)}to{background:var(--down-wash)}}
+.files tr.gone td{color:var(--dim)}
+.files tr.gone .nm span,.files tr.gone td.c-size{text-decoration:line-through;text-decoration-color:var(--down)}
+.files tr.leaving{opacity:0;transition:opacity .6s ease}
+.c-ev{font-family:var(--mono);font-size:12px;letter-spacing:.02em}
+
+.band{display:flex;align-items:center;gap:10px;padding:8px 12px;background:var(--ink);color:var(--bg);font-weight:500}
+.band .ico{stroke-width:2}
+.band .btn{margin-left:auto;height:26px;border-color:var(--bg);color:var(--bg)}
+.band .btn:hover{background:rgba(16,21,28,.1);color:var(--bg)}
+.band.quiet .btn:hover{background:var(--hover);color:var(--ink)}
+.band.quiet{background:var(--raise);color:var(--ink);border-bottom:1px solid var(--line)}
+.band.quiet .btn{border-color:var(--line);color:var(--ink)}
+.empty{padding:56px 32px;max-width:520px}
+.empty h3{font-size:16px;font-weight:600;margin-bottom:8px}
+.empty p{color:var(--ink-2);margin-bottom:16px}
+.empty code{font-family:var(--mono);background:var(--raise);padding:2px 6px;border-radius:3px}
+.skel td span{display:block;height:10px;border-radius:2px;background:linear-gradient(90deg,var(--raise),#212c39,var(--raise));background-size:200% 100%;animation:shimmer 1.4s linear infinite}
+@keyframes shimmer{to{background-position:-200% 0}}
+
+/* 변경 내용 패널 */
+.insp{display:flex;flex-direction:column;min-height:0;background:var(--bg-2)}
+.insp-head{padding:14px 16px 12px;border-bottom:1px solid var(--line)}
+.insp-head:empty{display:none}
+.part summary{list-style:none;cursor:pointer}.part summary::-webkit-details-marker{display:none}
+.part summary h4 .tw{width:12px;height:12px;color:var(--dim);transition:transform .15s var(--ease)}.part[open] summary h4 .tw{transform:rotate(90deg)}
+.files td.num.up,.files td.num.down{font-weight:600}
+.list.stale .files td{background:none!important;color:var(--dim)}.list.stale .files .up,.list.stale .files .down{color:var(--dim)}
+.insp-name{display:flex;align-items:center;gap:8px;font-size:16px;font-weight:600}
+.insp-path{font-family:var(--mono);font-size:12px;color:var(--dim);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.insp-meta{display:flex;flex-wrap:wrap;gap:4px 12px;margin-top:10px;color:var(--ink-2);font-size:12px}
+.insp-meta .ev{font-family:var(--mono);font-weight:600}
+.insp-actions{display:flex;gap:6px;margin-top:12px}
+.insp-body{overflow:auto;flex:1;min-height:0;padding:12px 16px 20px}
+.summary{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:12px;color:var(--ink-2);margin-bottom:12px}
+.summary b{font-family:var(--mono);font-weight:600}
+.part{margin-bottom:16px}
+.part h4{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:600;color:var(--ink-2);margin-bottom:6px}
+.part h4 .tag{font-family:var(--mono);font-weight:600}
+.diff{font-family:var(--mono);font-size:12.5px;line-height:1.6;border:1px solid var(--line);border-radius:4px;overflow:hidden}
+.diff div{display:grid;grid-template-columns:34px 34px 16px 1fr;white-space:pre-wrap;word-break:break-all}
+.diff .ln{color:var(--dim);text-align:right;padding-right:6px;user-select:none}
+.diff .hunk{display:block;color:var(--dim);background:var(--raise);padding:2px 8px}
+.diff .a{background:var(--add-wash)}.diff .a .g{color:var(--add)}
+.diff .d{background:var(--del-wash)}.diff .d .g{color:var(--del)}
+.prose{border:1px solid var(--line);border-radius:4px;padding:10px 12px;line-height:1.7;color:var(--ink-2)}
+.prose ins{text-decoration:none;background:var(--add-wash);color:#b6f0bf;box-shadow:inset 0 -1px 0 var(--add)}
+.prose del{background:var(--del-wash);color:#ffc2bd;text-decoration-color:var(--del)}
+.prose ins::before{content:"+";color:var(--add);font-family:var(--mono);margin-right:1px}
+.prose del::before{content:"−";color:var(--del);font-family:var(--mono);margin-right:1px}
+.pair{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.pair figure{border:1px solid var(--line);border-radius:4px;overflow:hidden;background:#0c1016}
+.pair figcaption{display:flex;justify-content:space-between;font-size:11px;color:var(--dim);padding:4px 8px;border-top:1px solid var(--line)}
+.pair figcaption b{font-weight:600;color:var(--ink-2)}
+.pair figure.was{border-color:rgba(248,81,73,.5)}.pair figure.now{border-color:rgba(63,185,80,.5)}
+.pair svg,.swipe svg{display:block;width:100%;height:auto}
+.swipe{position:relative;border:1px solid var(--line);border-radius:4px;overflow:hidden;background:#0c1016}
+.swipe .top{position:absolute;inset:0;clip-path:inset(0 0 0 var(--cut,50%))}
+.swipe .handle{position:absolute;top:0;bottom:0;left:var(--cut,50%);width:2px;background:var(--ink);transform:translateX(-1px)}
+.swipe-ctl{display:flex;align-items:center;gap:10px;margin-top:8px;font-size:12px;color:var(--dim)}
+.swipe-ctl input{flex:1;accent-color:var(--sel)}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:4px;overflow:hidden;margin-left:auto}
+.seg button{border:0;background:none;padding:3px 10px;font-size:12px;color:var(--dim);cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--hover);color:var(--ink)}
+.facts{display:grid;grid-template-columns:auto 1fr;gap:4px 16px;font-size:12px;margin-top:10px}
+.facts dt{color:var(--dim)}.facts dd{font-family:var(--mono)}
+.confirm{margin-top:12px;padding:10px 12px;border:1px solid var(--ink-2);border-radius:4px;font-size:12px;color:var(--ink-2)}
+.confirm div{display:flex;gap:6px;margin-top:8px}
+.note{color:var(--ink-2);line-height:1.6}
+
+/* 하단 로그 */
+.log{display:grid;grid-template-columns:minmax(0,1fr) 260px;border-top:1px solid var(--line);background:var(--bg-2);min-height:0}
+.log-main{display:flex;flex-direction:column;min-height:0}
+.log-bar{display:flex;align-items:center;gap:8px;padding:0 12px;height:38px;border-bottom:1px solid var(--line)}
+.log-bar h2{font-size:13px;font-weight:600;margin-right:6px}
+.ptabs{display:flex;align-self:stretch;margin-right:8px}
+.ptabs button{border:0;background:none;padding:0 10px;font-size:13px;font-weight:600;color:var(--dim);cursor:pointer}
+.ptabs button[aria-selected="true"]{color:var(--ink);box-shadow:inset 0 -2px 0 var(--sel)}
+.ptabs button:hover{color:var(--ink)}
+.chart-only{display:flex;align-items:center;gap:8px;flex:1;min-width:0}
+.chart-only[hidden]{display:none}
+.legend{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--ink-2);white-space:nowrap;overflow:hidden}
+.legend .sw{display:inline-block;width:10px;height:10px;border-radius:2px;margin-left:6px}
+.legend .sep{width:1px;height:14px;background:var(--line);margin:0 6px}
+.up-fill{background:var(--up)}.down-fill{background:var(--down)}.mid-fill{background:var(--vol-mid)}
+.chart{position:relative;flex:1;min-height:0}
+.chart svg{display:block;width:100%;height:100%}
+.chart .grid{stroke:var(--line-soft);stroke-width:1}
+.chart .axis{fill:var(--dim);font:11px var(--mono)}
+.chart .now-line{stroke:var(--ink-2);stroke-dasharray:3 3;stroke-width:1}
+.chart .cross{stroke:var(--ink-2);stroke-dasharray:3 3;stroke-width:1}
+.chart .hit{fill:transparent;cursor:crosshair}
+.chart .hit:hover+g .body{stroke:var(--ink);stroke-width:1}
+.tip{position:absolute;pointer-events:none;padding:8px 10px;background:var(--raise);border:1px solid var(--line-float);border-radius:4px;font:12px/1.55 var(--sans);color:var(--ink);white-space:nowrap;box-shadow:0 8px 24px rgba(0,0,0,.45)}
+.tip b{font-family:var(--mono);font-weight:600}
+.tip .num{font-size:12px}
+.chip{height:24px;padding:0 10px;border:1px solid var(--line);border-radius:12px;background:none;color:var(--dim);cursor:pointer;font-size:12px}
+.chip:hover{color:var(--ink)}
+.chip[aria-pressed="true"]{color:var(--ink);border-color:var(--ink-2)}
+.log-bar .search{width:200px;height:26px;margin-left:auto}
+.events td{height:24px;padding:0 12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-family:var(--mono);font-size:12.5px;font-variant-numeric:tabular-nums}
+.events td.t{color:var(--dim);width:118px}
+.events td.e{width:110px;font-weight:600}
+.events td.x{width:150px;text-align:right;color:var(--ink-2)}
+.events tr{cursor:pointer}.events tr:hover td{background:var(--hover)}
+.events tr.fresh td{animation:fresh 1.2s var(--ease)}
+@keyframes fresh{from{background:#243041}to{background:transparent}}
+.tally{border-left:1px solid var(--line);padding:10px 16px;display:flex;flex-direction:column;gap:10px;min-height:0;overflow:auto}
+.tally h2{font-size:13px;font-weight:600}
+.tally dl{display:grid;grid-template-columns:1fr auto;row-gap:4px;align-items:baseline}
+.tally dt{color:var(--dim);font-size:12px}
+.tally dd{font-family:var(--mono);font-size:19px;font-weight:600;text-align:right;font-variant-numeric:tabular-nums}
+.tally dd i{font-style:normal;font-size:13px;margin-right:6px;vertical-align:2px}
+.band.ovf{padding:4px 8px 4px 12px;font-size:12px}
+.band.ovf[hidden]{display:none}
+
+.status{display:flex;align-items:center;gap:20px;padding:0 12px;border-top:1px solid var(--line);background:var(--raise);color:var(--dim);font-size:12px;white-space:nowrap}
+.status .sp{margin-left:auto}
+
+/* 컨텍스트 메뉴, 토스트 */
+.menu{position:fixed;z-index:20;min-width:220px;padding:4px;background:var(--raise);border:1px solid var(--line-float);border-radius:6px;box-shadow:0 8px 24px rgba(0,0,0,.45)}
+.menu[hidden]{display:none}
+.menu button{display:flex;justify-content:space-between;width:100%;padding:6px 10px;border:0;background:none;border-radius:4px;cursor:pointer;text-align:left;color:var(--ink)}
+.menu button:hover,.menu button:focus-visible{background:var(--hover);outline:0}
+.menu kbd{font-family:var(--mono);font-size:11px;color:var(--dim)}
+.menu hr{border:0;border-top:1px solid var(--line);margin:4px 0}
+.empty code{white-space:nowrap}
+.toast{position:fixed;left:50%;bottom:calc(var(--log) + 44px);transform:translate(-50%,8px);opacity:0;display:flex;align-items:center;gap:14px;padding:8px 8px 8px 14px;background:var(--raise);color:var(--ink);border:1px solid var(--line-float);border-radius:6px;box-shadow:0 8px 24px rgba(0,0,0,.45);transition:opacity .2s var(--ease),transform .2s var(--ease);pointer-events:none}
+.toast.on{opacity:1;transform:translate(-50%,0);pointer-events:auto}
+.toast .btn{height:26px}
+
+@media (max-width:1439px){:root{--insp:380px}}
+@media (max-width:1279px){:root{--sidebar:200px;--insp:320px}.hb .search{width:160px}.metrics .lat{display:none}.files col:nth-child(4),.files col:nth-child(6){width:0!important}.files th:nth-child(4),.files td:nth-child(4),.files th:nth-child(6),.files td:nth-child(6){padding:0;font-size:0;visibility:hidden}}
+@media (max-height:800px){:root{--log:196px}}
+@media (prefers-reduced-motion:reduce){
+  .files tr.tick-up td,.files tr.tick-down td,.events tr.fresh td,.skel td span{animation:none}
+  .files td,.files tr.leaving,.toast{transition:none}
+}
+
+/* ===== R2 화면 추가 (main-window.html 토큰·컴포넌트를 그대로 쓴다) ===== */
+.proto{display:flex;align-items:center;gap:6px;height:36px;padding:0 12px;background:#0b0f14;border-bottom:1px solid var(--line);overflow-x:auto;white-space:nowrap;font-size:12px;color:var(--dim);scrollbar-width:none}
+.proto b{color:var(--ink-2);font-weight:600;margin-right:6px}
+.proto .chip{height:22px;padding:0 8px;font-size:11.5px}
+.proto .sep{width:1px;height:14px;background:var(--line);margin:0 4px;flex:none}
+.app{height:calc(100vh - 36px)}
+
+/* 주소 입력 (Ctrl+L) */
+.addr{display:flex;align-items:center;gap:6px;flex:1;min-width:0;height:30px;padding:0 8px;border:1px solid var(--sel);border-radius:4px}
+.addr input{flex:1;min-width:0;border:0;background:none;outline:0;font-family:var(--mono);font-size:13px;color:var(--ink)}
+.addr kbd{font-family:var(--mono);font-size:11px;color:var(--dim)}
+.search.on{border-color:var(--ink-2);color:var(--ink-2)}
+.search .x{display:inline-flex;border:0;background:none;color:var(--dim);cursor:pointer;padding:2px;border-radius:3px}
+.search .x:hover{color:var(--ink);background:var(--hover)}
+.search .x .ico{width:12px;height:12px}
+
+/* 검색 결과 */
+.fbar{display:flex;align-items:center;gap:6px;padding:8px 12px;border-bottom:1px solid var(--line-soft);flex-wrap:wrap}
+.fbar .lbl{font-size:12px;color:var(--dim);margin-right:4px}
+.chip .n{font-family:var(--mono);font-size:11.5px;margin-left:5px;color:var(--dim)}
+.chip[aria-pressed="true"] .n{color:var(--ink-2)}
+.fbar .clear{margin-left:auto;border:0;background:none;color:var(--dim);font-size:12px;cursor:pointer;padding:2px 4px;border-radius:3px}
+.fbar .clear:hover{color:var(--ink);background:var(--hover)}
+.loc{font-family:var(--mono);font-size:12px;color:var(--dim)}
+.nm mark{background:none;color:var(--ink);font-weight:700;text-decoration:underline;text-decoration-color:var(--ink-2);text-underline-offset:3px}
+.band .num{font-size:12.5px}
+.band .meta{display:flex;gap:14px;color:var(--ink-2);font-size:12px}
+.band .meta b{font-family:var(--mono);font-weight:600;color:var(--ink);font-variant-numeric:tabular-nums}
+.spin{width:14px;height:14px;flex:none;border:2px solid var(--line-float);border-top-color:var(--ink);border-radius:50%;animation:spin .9s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.kbd{font-family:var(--mono);font-size:11px;padding:1px 5px;border:1px solid var(--line);border-radius:3px;color:var(--ink-2)}
+
+/* 휴지통 */
+.tbar{display:flex;align-items:center;gap:6px;padding:8px 12px;border-bottom:1px solid var(--line-soft)}
+.tbar h3{font-size:14px;font-weight:600;margin-right:6px}
+.tbar .cnt{font-size:12px;color:var(--dim)}
+.tbar .btn{height:26px}
+.tbar .sp{margin-left:auto}
+.files .ck{width:16px;height:16px;accent-color:var(--sel);vertical-align:-3px}
+
+/* 확인 대화상자: 영구 삭제처럼 되돌릴 수 없는 작업만 */
+.dlg-back{position:fixed;inset:36px 0 0;background:rgba(5,8,12,.62);display:grid;place-items:center;z-index:30}
+.dlg{width:440px;padding:18px 20px 16px;background:var(--raise);border:1px solid var(--line-float);border-radius:6px;box-shadow:0 16px 48px rgba(0,0,0,.55)}
+.dlg h3{display:flex;align-items:center;gap:8px;font-size:16px;font-weight:600;margin-bottom:8px}
+.dlg p{color:var(--ink-2);line-height:1.6}
+.dlg .first{margin:12px 0 4px;padding:8px 10px;border:1px solid var(--line);border-radius:4px;font-family:var(--mono);font-size:12.5px;color:var(--ink)}
+.dlg .first span{color:var(--dim)}
+.dlg .row{display:flex;justify-content:flex-end;gap:8px;margin-top:16px}
+.dlg .btn{height:32px;padding:0 14px}
+.btn.danger{border-color:var(--ink);background:var(--ink);color:var(--bg);font-weight:600}
+.btn.danger:hover{background:var(--ink-2);color:var(--bg)}
+
+/* 전체 이력 */
+.back{display:inline-flex;align-items:center;gap:4px;border:0;background:none;color:var(--dim);cursor:pointer;font-size:12px;padding:2px 4px;margin-left:-4px;border-radius:3px}
+.back:hover{color:var(--ink);background:var(--hover)}
+.back .ico{width:12px;height:12px}
+.vers{width:100%;border-collapse:collapse;table-layout:fixed;font-size:12.5px}
+.vers th{font-size:11px;font-weight:500;color:var(--dim);text-align:left;padding:0 8px 6px;border-bottom:1px solid var(--line)}
+.vers td{height:34px;padding:0 8px;border-bottom:1px solid var(--line-soft);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.vers td.v{font-family:var(--mono);font-weight:600}
+.vers td.t,.vers td.s{font-family:var(--mono);color:var(--ink-2);font-variant-numeric:tabular-nums}
+.vers td.d{font-family:var(--mono);font-weight:600;text-align:right}
+.vers tbody tr{cursor:pointer}.vers tbody tr:hover td{background:var(--hover)}
+.vers tr[aria-selected="true"] td{background:var(--sel-wash);box-shadow:inset 0 1px 0 var(--sel),inset 0 -1px 0 var(--sel)}
+.vers .cur{font-family:var(--sans);font-weight:500;font-size:11px;color:var(--dim);margin-left:6px}
+.vers .ev{font-family:var(--mono);font-size:11.5px;color:var(--dim)}
+.foot-note{margin-top:12px;font-size:12px;color:var(--dim);line-height:1.6}
+
+/* 미리보기·편집 */
+.modebar{display:flex;align-items:center;gap:8px;margin-bottom:10px;font-size:12px;color:var(--dim)}
+.modebar .ro{display:inline-flex;align-items:center;gap:5px;color:var(--ink-2)}
+.modebar .ro .ico{width:12px;height:12px}
+.modebar .btn{height:26px;margin-left:auto}
+.code{font-family:var(--mono);font-size:12.5px;line-height:1.6;border:1px solid var(--line);border-radius:4px;overflow:hidden}
+.code div{display:grid;grid-template-columns:38px 1fr;white-space:pre-wrap;word-break:break-all}
+.code .ln{color:var(--dim);text-align:right;padding-right:10px;user-select:none}
+.code.edit{border-color:var(--sel)}
+.code.edit .cur-line{background:var(--hover)}
+.code.edit .caret{display:inline-block;width:2px;height:1.1em;background:var(--sel);vertical-align:-2px;animation:blink 1.1s steps(1) infinite}
+@keyframes blink{50%{opacity:0}}
+.code.dimmed{opacity:.55}
+.dirty{font-family:var(--mono);color:var(--ink);font-weight:600}
+
+/* 띠 안의 짧은 설명 상자(조용한 상자): 되돌리기 확인과 같은 형식 */
+.confirm h5{display:flex;align-items:center;gap:6px;font-size:13px;font-weight:600;color:var(--ink);margin-bottom:4px}
+.confirm h5 .ico{stroke-width:2}
+.confirm p{line-height:1.6}
+.confirm .stamps{display:grid;grid-template-columns:auto 1fr;gap:2px 12px;margin:8px 0 2px;font-size:12px}
+.confirm .stamps dt{color:var(--dim)}.confirm .stamps dd{font-family:var(--mono);color:var(--ink)}
+.confirm .btn{height:28px}
+.confirm .sub{display:block;margin-top:10px;padding-top:10px;border-top:1px solid var(--line)}
+.confirm .sub div{display:flex;gap:6px;margin-top:8px}
+
+/* 이력 끔 */
+.status .off{display:inline-flex;align-items:center;gap:6px;color:var(--ink)}
+.status .off .ico{width:13px;height:13px}
+
+/* 트레이 감시 경로 4개 이상 */
+.tray-stage{display:flex;flex-wrap:wrap;gap:24px 32px;justify-content:center;align-content:flex-start;padding:40px 24px;height:100%;overflow:auto;background:
+  linear-gradient(180deg,#1b1f26,#0e1116)}
+.tray-stage h4{flex:0 0 100%;text-align:center;font-size:12px;font-weight:500;color:var(--dim)}
+.win{width:360px;background:var(--bg);border:1px solid var(--line-float);border-radius:6px;box-shadow:0 16px 48px rgba(0,0,0,.55);overflow:hidden;align-self:start}
+.win .whb{display:flex;align-items:center;height:40px;padding:0 6px 0 14px;background:var(--raise);border-bottom:1px solid var(--line)}
+.win .whb h3{font-size:13px;font-weight:600}
+.win .whb button{margin-left:auto;width:28px;height:28px;border:0;background:none;color:var(--dim);border-radius:4px;display:grid;place-items:center}
+.win .wst{display:flex;align-items:center;gap:9px;padding:14px 16px 12px;font-size:16px;font-weight:600}
+.win .wst .dot{width:9px;height:9px;border-radius:50%;background:var(--ink)}
+.win .wst small{margin-left:auto;font-size:12px;font-weight:400;color:var(--dim)}
+.win .wst small b{font-family:var(--mono);font-size:14px;font-weight:600;color:var(--ink);margin:0 2px 0 6px}
+.paths{list-style:none;border-top:1px solid var(--line-soft);border-bottom:1px solid var(--line-soft)}
+.paths li{display:flex;align-items:center;gap:10px;padding:7px 16px}
+.paths li+li{border-top:1px solid var(--line-soft)}
+.paths .ico{color:var(--dim)}
+.paths .p{font-family:var(--mono);font-size:13px;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.paths .m{margin-left:auto;color:var(--dim);font-size:12px;white-space:nowrap}
+.paths .more button{display:flex;align-items:center;gap:8px;width:100%;border:0;background:none;color:var(--ink-2);cursor:pointer;font-size:12px;padding:0;text-align:left}
+.paths .more button:hover{color:var(--ink)}
+.paths .more .ico{width:12px;height:12px;transition:transform .15s var(--ease)}
+.paths .more button[aria-expanded="true"] .ico{transform:rotate(90deg)}
+.paths.scroll{max-height:calc(7 * 35px);overflow:auto}
+.win .wfoot{padding:10px 16px 14px;font-size:12px;color:var(--dim)}
+.nmenu{width:300px;padding:6px 0;background:#2b2b2b;border:1px solid #3c3c3c;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.5);font:14px/1.4 var(--sans);color:#f2f2f2;align-self:start}
+.nmenu div{padding:5px 16px}
+.nmenu .dis{color:#9a9a9a}
+.nmenu .mono{font-family:var(--mono);font-size:13px}
+.nmenu hr{border:0;border-top:1px solid #3e3e3e;margin:5px 0}
+
+@media (prefers-reduced-motion:reduce){.spin,.code.edit .caret{animation:none}.paths .more .ico{transition:none}}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-back" viewBox="0 0 16 16"><path d="M10 3 5 8l5 5"/></symbol>
+  <symbol id="i-fwd" viewBox="0 0 16 16"><path d="m6 3 5 5-5 5"/></symbol>
+  <symbol id="i-upd" viewBox="0 0 16 16"><path d="M8 13V3M3.5 7.5 8 3l4.5 4.5"/></symbol>
+  <symbol id="i-chev" viewBox="0 0 16 16"><path d="m6 3 5 5-5 5"/></symbol>
+  <symbol id="i-chevd" viewBox="0 0 16 16"><path d="m3 6 5 5 5-5"/></symbol>
+  <symbol id="i-search" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.5"/><path d="m10.5 10.5 3.5 3.5"/></symbol>
+  <symbol id="i-menu" viewBox="0 0 16 16"><path d="M2.5 4h11M2.5 8h11M2.5 12h11"/></symbol>
+  <symbol id="i-x" viewBox="0 0 16 16"><path d="m4 4 8 8M12 4l-8 8"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 16 16"><path d="M8 3v10M3 8h10"/></symbol>
+  <symbol id="i-folder" viewBox="0 0 16 16"><path d="M1.5 4.5v8h13v-7H7.5L6 4H1.5z"/></symbol>
+  <symbol id="i-code" viewBox="0 0 16 16"><path d="M3 1.5h6.5l3.5 3.5v9.5H3zM9.5 1.5V5H13M6.5 8.5 5 10l1.5 1.5M9.5 8.5 11 10l-1.5 1.5"/></symbol>
+  <symbol id="i-text" viewBox="0 0 16 16"><path d="M3 1.5h6.5l3.5 3.5v9.5H3zM9.5 1.5V5H13M5.5 8h5M5.5 10.5h5M5.5 13h3"/></symbol>
+  <symbol id="i-image" viewBox="0 0 16 16"><rect x="1.5" y="2.5" width="13" height="11" rx="1"/><circle cx="5.5" cy="6" r="1.2"/><path d="m2 12 4-4 3 3 2-2 3.5 3.5"/></symbol>
+  <symbol id="i-bin" viewBox="0 0 16 16"><path d="M3 1.5h6.5l3.5 3.5v9.5H3zM9.5 1.5V5H13"/><path d="M5.5 8.5v3M8 8.5v3M10.5 8.5v3"/></symbol>
+  <symbol id="i-warn" viewBox="0 0 16 16"><path d="M8 1.8 15 14H1zM8 6v3.5M8 11.6v.1"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 16 16"><path d="M2.5 4h11M6 4V2.5h4V4M4 4l.7 9.5h6.6L12 4"/></symbol>
+  <symbol id="i-home" viewBox="0 0 16 16"><path d="M2 7.5 8 2.5l6 5M3.5 6.5v7h9v-7"/></symbol>
+  <symbol id="i-panel" viewBox="0 0 16 16"><rect x="1.5" y="2.5" width="13" height="11" rx="1"/><path d="M10 2.5v11"/></symbol>
+  <symbol id="i-restore" viewBox="0 0 16 16"><path d="M2.5 8a5.5 5.5 0 1 0 1.6-3.9M2.5 2.5v3h3M8 5v3.2l2 1.3"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 16 16"><rect x="3" y="7" width="10" height="7" rx="1"/><path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2"/></symbol>
+  <symbol id="i-edit" viewBox="0 0 16 16"><path d="M10.5 2.5 13.5 5.5 6 13H3v-3z"/></symbol>
+  <symbol id="i-history" viewBox="0 0 16 16"><path d="M2.5 8a5.5 5.5 0 1 0 1.6-3.9M2.5 2.5v3h3M8 5v3.2l2 1.3"/></symbol>
+  <symbol id="i-reload" viewBox="0 0 16 16"><path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9M13.5 2.5v3h-3"/></symbol>
+</svg>
+
+<!-- 시안 전용 상태 전환줄. 앱 화면의 일부가 아니다. ?s=<상태> 로도 연다. -->
+<div class="proto" role="toolbar" aria-label="시안 상태 전환" id="proto"></div>
+
+<div class="app" id="app">
+  <header class="hb">
+    <div class="grp">
+      <button class="btn" aria-label="뒤로"><svg class="ico"><use href="#i-back"/></svg></button>
+      <button class="btn" aria-label="앞으로" disabled><svg class="ico"><use href="#i-fwd"/></svg></button>
+      <button class="btn" aria-label="상위 폴더"><svg class="ico"><use href="#i-upd"/></svg></button>
+    </div>
+    <div id="where" style="display:flex;flex:1;min-width:0"></div>
+    <div id="search-slot"></div>
+    <div class="metrics" aria-live="off">
+      <span>감시 경로<b>3</b></span>
+      <span>최근 1분 이벤트<b>9</b></span>
+      <span class="lat">반영 지연 P95<b>38ms</b></span>
+    </div>
+    <div class="grp">
+      <button class="btn" aria-pressed="true" aria-label="변경 내용 패널"><svg class="ico"><use href="#i-panel"/></svg></button>
+      <button class="btn" aria-label="메뉴"><svg class="ico"><use href="#i-menu"/></svg></button>
+    </div>
+  </header>
+
+  <div class="tabs" role="tablist" aria-label="열린 위치">
+    <button class="tab" role="tab" aria-selected="true" id="tab-cur">filescope<span class="x" aria-label="탭 닫기"><svg class="ico"><use href="#i-x"/></svg></span></button>
+    <button class="tab" role="tab" aria-selected="false">src<span class="x" aria-label="탭 닫기"><svg class="ico"><use href="#i-x"/></svg></span></button>
+    <button class="tab-add" aria-label="새 탭"><svg class="ico"><use href="#i-plus"/></svg></button>
+  </div>
+
+  <div class="work" id="work">
+    <nav class="side" aria-label="위치">
+      <h2>즐겨찾기</h2>
+      <ul>
+        <li><button class="node"><svg class="ico"><use href="#i-home"/></svg><span class="lbl">홈</span></button></li>
+        <li><button class="node" id="side-fs"><span class="watch-dot" title="감시 중"></span><span class="lbl">filescope</span></button></li>
+        <li><button class="node"><span class="watch-dot" title="감시 중"></span><span class="lbl">notes</span></button></li>
+        <li><button class="node"><span class="watch-dot off" title="감시 안 함"></span><span class="lbl">Downloads</span></button></li>
+      </ul>
+      <h2>폴더</h2>
+      <ul>
+        <li><button class="node" style="--d:0"><svg class="ico tw"><use href="#i-chevd"/></svg><span class="lbl">filescope</span></button></li>
+        <li><button class="node" style="--d:1"><svg class="ico tw"><use href="#i-chev"/></svg><span class="lbl">docs</span></button></li>
+        <li><button class="node" style="--d:1"><svg class="ico tw"><use href="#i-chev"/></svg><span class="lbl">src</span></button></li>
+        <li><button class="node" style="--d:1"><svg class="ico tw"><use href="#i-chev"/></svg><span class="lbl">tests</span></button></li>
+      </ul>
+      <h2>시스템</h2>
+      <ul><li><button class="node" id="side-trash"><svg class="ico"><use href="#i-trash"/></svg><span class="lbl">휴지통</span><span class="cnt flat" id="trash-n">5</span></button></li></ul>
+    </nav>
+
+    <section class="list" aria-label="파일 목록" id="center"></section>
+
+    <aside class="insp" aria-label="변경 내용">
+      <div class="insp-head" id="insp-head"></div>
+      <div class="insp-body" id="insp-body" aria-live="polite"></div>
+    </aside>
+  </div>
+
+  <section class="log" aria-label="이벤트 로그">
+    <div class="log-main">
+      <div class="log-bar">
+        <div class="ptabs" role="tablist" aria-label="하단 패널">
+          <button role="tab" aria-selected="true">이벤트 로그</button>
+          <button role="tab" aria-selected="false">변경량 · 1분봉</button>
+        </div>
+        <button class="chip" aria-pressed="true">전체</button>
+        <button class="chip" aria-pressed="false">생성·삭제</button>
+        <button class="chip" aria-pressed="false">수정</button>
+        <button class="chip" aria-pressed="false">이동</button>
+        <button class="chip" aria-pressed="false">속성</button>
+        <label class="search"><svg class="ico"><use href="#i-search"/></svg><span class="sr">경로로 로그 거르기</span><input placeholder="경로로 거르기"></label>
+      </div>
+      <div class="scroller"><table class="events"><tbody id="events"></tbody></table></div>
+    </div>
+    <div class="tally">
+      <h2>이번 세션</h2>
+      <dl>
+        <dt>● 생성</dt><dd class="up"><i>●</i>4</dd>
+        <dt>▲ 수정</dt><dd class="up"><i>▲</i>17</dd>
+        <dt>✕ 삭제</dt><dd class="down"><i>✕</i>2</dd>
+        <dt>→ 이동</dt><dd class="flat"><i>→</i>1</dd>
+      </dl>
+    </div>
+  </section>
+
+  <footer class="status" id="status"></footer>
+</div>
+
+<div id="overlay"></div>
+
+<script>
+(() => {
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const ico = (n, extra = '') => `<svg class="ico" ${extra}><use href="#i-${n}"/></svg>`;
+const kindIco = n => /\.(png|jpg|svg)$/.test(n) ? 'image' : /\.(c|h|cpp|hpp|py|sh)$/.test(n) ? 'code' : /\.(md|txt|log)$/.test(n) ? 'text' : 'bin';
+
+/* ---------- 상태 목록 ---------- */
+const STATES = [
+  ['검색', [['search-run', '검색 중'], ['search-done', '완료 · .md 거르기'], ['search-none', '결과 없음'], ['addr', '주소 입력 Ctrl+L']]],
+  ['휴지통', [['trash', '목록'], ['trash-conflict', '복원 충돌'], ['trash-confirm', '비우기 확인'], ['trash-empty', '빈 휴지통']]],
+  ['이력', [['hist', '전체 이력'], ['hist-deleted', '삭제된 파일'], ['hist-none', '버전 없음'], ['hist-off', '이력 끔']]],
+  ['미리보기', [['pre', '읽기 전용'], ['pre-edit', '편집 중'], ['pre-conflict', '저장 충돌'], ['pre-overwrite', '덮어쓰기 확인'], ['pre-bad', '열 수 없음'], ['pre-big', '크기 한도']]],
+  ['트레이', [['tray', '감시 경로 4개 이상']]],
+];
+const ALL = STATES.flatMap(g => g[1].map(s => s[0]));
+let S = new URLSearchParams(location.search).get('s');
+if (!ALL.includes(S)) S = 'search-done';
+
+$('proto').innerHTML = STATES.map(([g, list], i) =>
+  (i ? '<span class="sep"></span>' : '') + `<b>${g}</b>` +
+  list.map(([k, l]) => `<button class="chip" data-s="${k}">${l}</button>`).join('')).join('');
+$('proto').addEventListener('click', e => { const b = e.target.closest('[data-s]'); if (b) go(b.dataset.s); });
+const go = s => { S = s; history.replaceState(null, '', '?s=' + s); render(); };
+
+/* ---------- 공용 조각 ---------- */
+const crumb = (parts) => `<nav class="crumb" aria-label="현재 경로">
+  <button aria-label="홈">${ico('home', 'style="width:14px;height:14px;color:inherit"')}</button>
+  ${parts.map((p, i) => `${ico('chev')}<button ${i === parts.length - 1 ? 'aria-current="page"' : ''}>${esc(p)}</button>`).join('')}</nav>`;
+const searchBox = (val = '') => `<label class="search${val ? ' on' : ''}">${ico('search')}<span class="sr">이 폴더에서 검색</span><input placeholder="이 폴더에서 검색" value="${esc(val)}">${val ? `<button class="x" aria-label="검색 지우기 (Esc)">${ico('x')}</button>` : ''}</label>`;
+const status = (cells) => cells.map((c, i) => i === 2 ? `<span class="sp">${c}</span>` : `<span>${c}</span>`).join('');
+const defStatus = (a, b) => status([a, b, '이력 보관 128 MB', '디스크 여유 41.2 GB', 'inotify watch <span class="num">214 / 8192</span>']);
+
+const EVENTS = [
+  ['14:31:52.418', '▲ 수정', 'up', 'filescope/README.md', '+240 B'],
+  ['14:31:49.102', '▲ 수정', 'up', 'filescope/build.log', '+1.2 KB'],
+  ['14:31:37.880', '● 생성', 'up', 'filescope/src/event_queue.h', '1.2 KB'],
+  ['14:31:27.311', '✕ 삭제', 'down', 'filescope/tmp_scan.o', '22.0 KB'],
+  ['14:31:00.045', '▼ 수정', 'down', 'filescope/src/normalizer.c', '−1.1 KB'],
+  ['14:30:41.556', '→ 이동', 'flat', 'filescope/docs/old.md → docs/notes.md', ''],
+];
+$('events').innerHTML = EVENTS.map(([t, e, c, p, x]) => `<tr><td class="t">${t}</td><td class="e ${c}">${e}</td><td>${esc(p)}</td><td class="x">${x}</td></tr>`).join('');
+
+/* ---------- 검색 ---------- */
+const RESULTS = [
+  ['notes.md', 'docs', '6.2 KB', '14:30:41', 'md'],
+  ['notes-r2.md', 'docs/design', '3.1 KB', '어제 18:02', 'md'],
+  ['release-notes.md', '.', '1.8 KB', '11-21 10:44', 'md'],
+  ['notes.txt', 'tests/fixtures/a', '412 B', '11-20 09:12', 'txt'],
+  ['test_notes.cpp', 'tests/his', '7.4 KB', '14:12:03', 'cpp'],
+  ['notes_index.cpp', 'src/search', '5.0 KB', '13:58:47', 'cpp'],
+  ['notes_index.hpp', 'src/search', '1.1 KB', '13:58:47', 'hpp'],
+  ['meeting-notes.md', 'docs/qa', '2.4 KB', '11-24 16:20', 'md'],
+  ['notes', 'tests/fixtures', '—', '11-20 09:12', 'dir'],
+];
+const hl = (n, q) => { const i = n.toLowerCase().indexOf(q); return i < 0 ? esc(n) : esc(n.slice(0, i)) + `<mark>${esc(n.slice(i, i + q.length))}</mark>` + esc(n.slice(i + q.length)); };
+const resultTable = (rows, selIdx) => `<div class="scroller"><table class="files" aria-label="검색 결과">
+  <colgroup><col><col style="width:34%"><col style="width:92px"><col style="width:122px"></colgroup>
+  <thead><tr><th><button>이름</button></th><th><button>위치</button></th><th class="r"><button>크기</button></th><th><button>수정 시각</button></th></tr></thead>
+  <tbody>${rows.map((r, i) => `<tr ${i === selIdx ? 'aria-selected="true"' : ''} ${r[4] === 'dir' ? 'class="dir"' : ''}>
+    <td><div class="nm">${ico(r[4] === 'dir' ? 'folder' : kindIco(r[0]))}<span>${hl(r[0], 'notes')}</span></div></td>
+    <td class="loc">${r[1] === '.' ? 'filescope' : 'filescope/' + esc(r[1])}</td>
+    <td class="r num">${r[2]}</td><td class="num flat">${r[3]}</td></tr>`).join('')}</tbody></table></div>`;
+const extChips = (on) => {
+  const c = [['md', 4], ['cpp', 2], ['hpp', 1], ['txt', 1], ['폴더', 1]];
+  return `<div class="fbar" role="group" aria-label="종류로 거르기"><span class="lbl">종류</span>
+    ${c.map(([k, n]) => `<button class="chip" aria-pressed="${on.includes(k)}">${k === '폴더' ? k : '.' + k}<span class="n">${n}</span></button>`).join('')}
+    ${on.length ? '<button class="clear">거르기 해제</button>' : ''}</div>`;
+};
+
+/* ---------- 휴지통 ---------- */
+const TRASH = [
+  ['draft-old.md', '~/projects/filescope/docs', '오늘 14:22', '3.4 KB', 'text'],
+  ['tmp_scan.o', '~/projects/filescope', '오늘 14:31', '22.0 KB', 'bin'],
+  ['screenshot-0412.png', '~/Downloads', '어제 21:05', '486 KB', 'image'],
+  ['scratch', '~/projects/filescope/tests', '11-23 17:40', '폴더 · 12개', 'folder'],
+  ['config.bak', '~/.config/app', '11-20 08:03', '920 B', 'bin'],
+];
+const trashTable = (sel) => `<div class="scroller"><table class="files" aria-label="휴지통 항목">
+  <colgroup><col style="width:40px"><col><col style="width:36%"><col style="width:120px"><col style="width:104px"></colgroup>
+  <thead><tr><th><span class="sr">선택</span></th><th><button>이름</button></th><th><button>원래 위치</button></th><th aria-sort="descending"><button>삭제 시각${ico('chevd')}</button></th><th class="r"><button>크기</button></th></tr></thead>
+  <tbody>${TRASH.map((r, i) => `<tr ${sel.includes(i) ? 'aria-selected="true"' : ''} ${r[4] === 'folder' ? 'class="dir"' : ''}>
+    <td><input type="checkbox" class="ck" aria-label="${esc(r[0])} 선택" ${sel.includes(i) ? 'checked' : ''}></td>
+    <td><div class="nm">${ico(r[4])}<span>${esc(r[0])}</span></div></td>
+    <td class="loc">${esc(r[1])}</td><td class="num flat">${r[2]}</td><td class="r num">${r[3]}</td></tr>`).join('')}</tbody></table></div>`;
+const trashBar = (nSel) => `<div class="tbar"><h3>휴지통</h3><span class="cnt"><span class="num">5</span>개 · 509 KB${nSel ? ` · <span class="num">${nSel}</span>개 선택` : ''}</span>
+  <span class="sp"></span>
+  <button class="btn" ${nSel ? '' : 'disabled'}>${ico('restore')}복원</button>
+  <button class="btn" ${nSel ? '' : 'disabled'}>영구 삭제…</button>
+  <button class="btn">휴지통 비우기…</button></div>`;
+
+/* ---------- 이력 ---------- */
+const VERS = [
+  ['v7', '14:31:52', '4.9 KB', '+240 B', 'up', '▲ 수정', true],
+  ['v6', '14:12:08', '4.7 KB', '+1.1 KB', 'up', '▲ 수정'],
+  ['v5', '13:40:55', '3.6 KB', '−312 B', 'down', '▼ 수정'],
+  ['v4', '11:02:17', '3.9 KB', '+86 B', 'up', '▲ 수정'],
+  ['v3', '어제 18:44', '3.8 KB', '+2.0 KB', 'up', '▲ 수정'],
+  ['v2', '어제 18:40', '1.8 KB', '+1.8 KB', 'up', '▲ 수정'],
+  ['v1', '어제 18:39', '0 B', '0 B', 'flat', '● 생성'],
+];
+const fileHead = (name, path, meta, actions) => `<div class="insp-name">${ico(kindIco(name))}${esc(name)}</div>
+  <div class="insp-path">${esc(path)}</div>${meta ? `<div class="insp-meta">${meta}</div>` : ''}${actions ? `<div class="insp-actions">${actions}</div>` : ''}`;
+
+/* ---------- 미리보기 ---------- */
+const DOC = ['# FileScope', '', '외부 프로그램이 바꾼 파일을 실시간으로 보여 주는', '네이티브 파일 탐색기.', '', '## 빌드', '', '    make build', '    make verify', '', '## 감시', '', 'inotify로 감시 경로를 등록하고,', '대기열이 넘치면 다시 검사해 맞춘다.'];
+const codeBlock = (lines, cls = '', caretAt = -1) => `<div class="code ${cls}" ${cls.includes('edit') ? 'role="textbox" aria-multiline="true" aria-label="README.md 편집"' : 'aria-label="README.md 내용, 읽기 전용"'}>${lines.map((l, i) =>
+  `<div class="${i === caretAt ? 'cur-line' : ''}"><span class="ln">${i + 1}</span><span>${esc(l) || ' '}${i === caretAt ? '<i class="caret"></i>' : ''}</span></div>`).join('')}</div>`;
+
+/* ---------- 렌더 ---------- */
+function render() {
+  document.querySelectorAll('#proto [data-s]').forEach(b => b.setAttribute('aria-pressed', b.dataset.s === S));
+  const center = $('center'), head = $('insp-head'), body = $('insp-body'), work = $('work');
+  $('overlay').innerHTML = '';
+  $('side-fs').setAttribute('aria-current', !S.startsWith('trash'));
+  $('side-trash').setAttribute('aria-current', S.startsWith('trash'));
+  $('trash-n').textContent = S === 'trash-empty' ? '0' : '5';
+  $('where').innerHTML = crumb(['projects', 'filescope']);
+  $('search-slot').innerHTML = searchBox();
+  $('tab-cur').firstChild.textContent = 'filescope';
+  $('status').innerHTML = defStatus('9개 항목', '');
+  work.parentElement.style.display = '';
+  document.querySelector('.tray-stage')?.remove();
+
+  if (S === 'tray') { renderTray(); return; }
+
+  /* 검색 */
+  if (S.startsWith('search')) {
+    $('search-slot').innerHTML = searchBox('notes');
+    $('tab-cur').firstChild.textContent = '검색: notes';
+    if (S === 'search-run') {
+      center.innerHTML = `<div class="band quiet" role="status"><span class="spin" aria-hidden="true"></span>
+        <span>filescope 안에서 “notes” 찾는 중…</span>
+        <span class="meta"><span>찾음 <b>6</b></span><span>살펴본 폴더 <b>184</b></span><span>접근 불가 <b>0</b></span></span>
+        <button class="btn">취소 <span class="kbd">Esc</span></button></div>` + resultTable(RESULTS.slice(0, 6), -1);
+      $('status').innerHTML = defStatus('검색 중 · 6개 찾음', '');
+    } else if (S === 'search-done') {
+      const md = RESULTS.filter(r => r[4] === 'md');
+      center.innerHTML = `<div class="band quiet" role="status">${ico('search')}
+        <span>“notes” <b class="num">9</b>개 찾음 · <b class="num">.md</b>만 보는 중 <b class="num">${md.length}</b>개</span>
+        <span class="meta"><span>살펴본 폴더 <b>412</b></span><span>접근 불가 <b>2</b></span></span>
+        <button class="btn">폴더로 돌아가기 <span class="kbd">Esc</span></button></div>` + extChips(['md']) + resultTable(md, 0);
+      $('status').innerHTML = defStatus('4 / 9개 표시', 'notes.md 선택 · Enter로 docs 폴더에서 열기');
+    } else {
+      center.innerHTML = `<div class="band quiet" role="status">${ico('search')}<span>“notes2026” 결과 없음</span>
+        <span class="meta"><span>살펴본 폴더 <b>412</b></span><span>접근 불가 <b>2</b></span></span>
+        <button class="btn">폴더로 돌아가기 <span class="kbd">Esc</span></button></div>
+        <div class="empty"><h3>“notes2026”과 이름이 맞는 항목이 없습니다</h3>
+        <p>filescope와 그 아래 폴더의 <b>파일·폴더 이름</b>만 찾습니다. 파일 내용은 찾지 않습니다. 권한이 없어 열지 못한 폴더 2개는 건너뛰었습니다.</p>
+        <button class="btn">상위 폴더(projects)에서 다시 찾기</button></div>`;
+      $('search-slot').innerHTML = searchBox('notes2026');
+      $('tab-cur').firstChild.textContent = '검색: notes2026';
+      $('status').innerHTML = defStatus('0개 찾음', '');
+    }
+    head.innerHTML = S === 'search-done' ? fileHead('notes.md', '~/projects/filescope/docs/notes.md',
+      `<span class="ev up">▲ 수정</span><span><span class="num">v3 → v4</span></span><span>14:30:41</span>`,
+      `<button class="btn">${ico('restore')}되돌리기</button><button class="btn">${ico('history')}전체 이력</button>`) : '';
+    body.innerHTML = S === 'search-done' ? `<div class="summary"><span><b class="up">+2</b> 줄 추가</span><span><b class="down">−1</b> 줄 삭제</span></div>
+      <div class="diff"><span class="hunk">@@ −8,4 +8,5 @@</span>
+      <div><span class="ln">8</span><span class="ln">8</span><span class="g"> </span><span>## 회의</span></div>
+      <div class="d"><span class="ln">9</span><span class="ln"></span><span class="g">−</span><span>- 검색은 R3</span></div>
+      <div class="a"><span class="ln"></span><span class="ln">9</span><span class="g">+</span><span>- 이름 검색은 R2, 내용 검색은 R3</span></div>
+      <div class="a"><span class="ln"></span><span class="ln">10</span><span class="g">+</span><span>- 확장자 칩으로 거르기</span></div>
+      <div><span class="ln">10</span><span class="ln">11</span><span class="g"> </span><span></span></div></div>`
+      : '<p class="note">결과를 고르면 여기에 그 파일의 변경 내용이 보입니다.</p>';
+    return;
+  }
+
+  /* 주소 입력 */
+  if (S === 'addr') {
+    $('where').innerHTML = `<label class="addr"><span class="sr">위치 입력</span><input value="~/projects/filescope/src/se" aria-label="위치 입력" aria-autocomplete="list" aria-expanded="true"><kbd>Enter 이동 · Esc 취소</kbd></label>`;
+    $('overlay').innerHTML = `<div class="menu" role="listbox" aria-label="위치 자동 완성" style="top:${36 + 44}px;left:132px;min-width:320px">
+      <button role="option" aria-selected="true" style="background:var(--hover)"><span class="num">~/projects/filescope/src/<b>search</b></span></button>
+      <button role="option"><span class="num">~/projects/filescope/src/<b>se</b>rvice_stub</span></button></div>`;
+    center.innerHTML = '<div class="empty"><h3>Ctrl+L로 경로를 직접 입력합니다</h3><p>머리줄 오른쪽 칸은 검색 전용입니다. 경로 표시줄을 누르거나 Ctrl+L을 누르면 이 입력으로 바뀌고, Tab·↓로 자동 완성을 고릅니다.</p></div>';
+    head.innerHTML = ''; body.innerHTML = '';
+    return;
+  }
+
+  /* 휴지통 */
+  if (S.startsWith('trash')) {
+    $('where').innerHTML = crumb(['휴지통']);
+    $('tab-cur').firstChild.textContent = '휴지통';
+    $('status').innerHTML = defStatus(S === 'trash-empty' ? '0개 항목' : '5개 항목', '');
+    if (S === 'trash-empty') {
+      center.innerHTML = trashBar(0).replace('휴지통 비우기…</button>', '휴지통 비우기…</button>').replace('<button class="btn">휴지통 비우기', '<button class="btn" disabled>휴지통 비우기').replace('<span class="num">5</span>개 · 509 KB', '비어 있음') +
+        `<div class="empty"><h3>휴지통이 비어 있습니다</h3><p>FileScope에서 Delete로 지운 항목이 여기에 모입니다. 다른 탐색기에서 휴지통으로 보낸 항목도 함께 보입니다.</p></div>`;
+      head.innerHTML = ''; body.innerHTML = '<p class="note">휴지통 항목을 고르면 여기에 원래 위치와 보관 버전이 보입니다.</p>';
+      return;
+    }
+    const sel = S === 'trash' ? [0] : S === 'trash-conflict' ? [0] : [];
+    const band = S === 'trash-conflict' ? `<div class="band" role="alert">${ico('warn')}<span>draft-old.md를 복원하지 못했습니다. 원래 위치에 같은 이름의 파일이 이미 있어 덮어쓰지 않았습니다.</span><button class="btn">원래 폴더 열기</button></div>` : '';
+    center.innerHTML = band + trashBar(sel.length) + trashTable(sel);
+    head.innerHTML = fileHead('draft-old.md', '원래 위치 ~/projects/filescope/docs/draft-old.md',
+      `<span class="ev down">✕ 휴지통으로</span><span class="num">오늘 14:22</span><span>보관 버전 <span class="num">3</span>개</span>`,
+      `<button class="btn primary">${ico('restore')}원래 위치로 복원</button>`);
+    body.innerHTML = `<dl class="facts" style="margin-top:0"><dt>크기</dt><dd>3.4 KB</dd><dt>종류</dt><dd>Markdown 텍스트</dd><dt>삭제한 곳</dt><dd>FileScope</dd></dl>
+      <p class="foot-note">복원하면 원래 위치에 같은 이름으로 다시 생깁니다. 그 자리에 이미 같은 이름이 있으면 덮어쓰지 않고 알려 드립니다.</p>`;
+    if (S === 'trash-confirm') {
+      $('overlay').innerHTML = `<div class="dlg-back"><div class="dlg" role="alertdialog" aria-modal="true" aria-labelledby="dlg-t" aria-describedby="dlg-d">
+        <h3 id="dlg-t">${ico('warn')}휴지통을 비울까요?</h3>
+        <p id="dlg-d">항목 <b class="num">5</b>개(509 KB)를 영구 삭제합니다. 되돌릴 수 없고, 이력에 보관된 버전도 복원에 쓸 수 없게 됩니다.</p>
+        <div class="first">draft-old.md <span>외 4개</span></div>
+        <div class="row"><button class="btn" id="dlg-cancel" autofocus>취소</button><button class="btn danger">5개 영구 삭제</button></div></div></div>`;
+      setTimeout(() => $('dlg-cancel')?.focus(), 0);
+    }
+    return;
+  }
+
+  /* 이력·미리보기 공통: 가운데는 평소 목록 */
+  center.innerHTML = `<div class="scroller"><table class="files" aria-label="filescope 안의 항목">
+    <colgroup><col><col style="width:92px"><col style="width:112px"><col style="width:96px"><col style="width:122px"></colgroup>
+    <thead><tr><th aria-sort="ascending"><button>이름${ico('chevd')}</button></th><th class="r"><button>크기</button></th><th class="r"><button>변동</button></th><th><button>이벤트</button></th><th><button>수정 시각</button></th></tr></thead>
+    <tbody>${[
+      ['docs', '—', '', '', '14:30:41', 'dir'], ['src', '—', '▲ 1.2 KB', 'up', '14:31:37', 'dir'], ['tests', '—', '', '', '14:12:03', 'dir'],
+      ['build.log', '18.4 KB', '▲ 1.2 KB', 'up', '14:31:49'], ['CMakeLists.txt', '2.1 KB', '', '', '11:20:02'], ['README.md', '4.9 KB', '▲ 240 B', 'up', '14:31:52', 'sel'],
+      ['tmp_scan.o', '22.0 KB', '▼ 22.0 KB', 'down', '14:31:27', 'gone'], ['Makefile', '1.4 KB', '', '', '어제 18:02'], ['logo.png', '38.0 KB', '', '', '11-21 10:44'],
+    ].map(([n, s, d, c, t, f]) => `<tr class="${f === 'dir' ? 'dir' : ''} ${f === 'gone' ? 'gone' : ''}" ${(f === 'sel' && S !== 'hist-deleted') || (f === 'gone' && S === 'hist-deleted') ? 'aria-selected="true"' : ''}>
+      <td><div class="nm">${ico(f === 'dir' ? 'folder' : kindIco(n))}<span>${n}</span></div></td><td class="r num c-size">${s}</td>
+      <td class="r num ${c}">${d}</td><td class="c-ev ${c}">${c === 'up' ? '▲ 수정' : c === 'down' ? '✕ 삭제' : ''}</td><td class="num flat">${t}</td></tr>`).join('')}</tbody></table></div>`;
+  $('status').innerHTML = defStatus('9개 항목', 'README.md 선택');
+
+  const readmeHead = (meta, actions) => fileHead('README.md', '~/projects/filescope/README.md', meta, actions);
+  const stdMeta = `<span class="ev up">▲ 수정</span><span class="num">v6 → v7</span><span>직전 버전 14:12:08</span>`;
+
+  if (S === 'hist') {
+    head.innerHTML = readmeHead(null, null);
+    body.innerHTML = `<button class="back">${ico('back')}변경 내용으로 <span class="kbd">←</span></button>
+      <h4 style="font-size:13px;font-weight:600;margin:8px 0 10px">전체 이력 <span class="flat" style="font-weight:400">· 보관 <span class="num">7</span>개 · 28 KB</span></h4>
+      <table class="vers" aria-label="README.md 버전">
+        <colgroup><col style="width:72px"><col><col style="width:64px"><col style="width:76px"></colgroup>
+        <thead><tr><th>버전</th><th>시각 · 이벤트</th><th>크기</th><th style="text-align:right">변동</th></tr></thead>
+        <tbody>${VERS.map(([v, t, s, d, c, e, cur], i) => `<tr ${i === 2 ? 'aria-selected="true"' : ''}>
+          <td class="v">${v}${cur ? '<span class="cur">현재</span>' : ''}</td><td class="t">${t} <span class="ev">${e}</span></td><td class="s">${s}</td><td class="d ${c}">${d}</td></tr>`).join('')}</tbody></table>
+      <p class="foot-note">버전을 고르고 Enter를 누르면 그 버전과 현재(v7)를 비교합니다. 보관 한도는 파일당 20개·8 MiB이며, 넘으면 오래된 버전부터 정리합니다.</p>`;
+    return;
+  }
+  if (S === 'hist-deleted') {
+    head.innerHTML = fileHead('tmp_scan.o', '~/projects/filescope/tmp_scan.o',
+      `<span class="ev down">✕ 삭제</span><span class="num">14:31:27</span><span>마지막 버전 <span class="num">v2</span></span>`,
+      `<button class="btn primary">${ico('restore')}v2 복원</button><button class="btn">${ico('history')}전체 이력</button>`);
+    body.innerHTML = `<div class="summary"><span>외부에서 삭제됨</span><span>마지막 크기 <b>22.0 KB</b></span></div>
+      <dl class="facts"><dt>종류</dt><dd>바이너리 (ELF 오브젝트)</dd><dt>마지막 크기</dt><dd>22,528 B</dd><dt>SHA-256</dt><dd>9f2c…41ab</dd><dt>보관 버전</dt><dd>v1, v2</dd></dl>
+      <p class="foot-note">복원하면 원래 위치에 v2 내용으로 다시 만듭니다. 그 사이 같은 이름의 파일이 생겼다면 덮어쓰지 않습니다.</p>`;
+    return;
+  }
+  if (S === 'hist-none') {
+    head.innerHTML = fileHead('tmp_scan.o', '~/projects/filescope/tmp_scan.o', `<span class="ev down">✕ 삭제</span><span class="num">14:31:27</span>`, '');
+    body.innerHTML = `<div class="empty" style="padding:24px 0"><h3>복구할 버전이 없습니다</h3>
+      <p>이 파일은 보관 한도(8 MiB)를 넘었거나 감시를 시작하기 전에 만들어져 이력에 버전이 없습니다. 다른 탐색기의 휴지통을 확인해 보세요.</p></div>`;
+    return;
+  }
+  if (S === 'hist-off') {
+    $('status').innerHTML = status(['9개 항목', 'README.md 선택',
+      `<span class="off">${ico('warn')}이력 꺼짐</span>`, '디스크 여유 41.2 GB', 'inotify watch <span class="num">214 / 8192</span>']);
+    center.insertAdjacentHTML('afterbegin', `<div class="band quiet" role="status">${ico('warn')}<span>이력 저장소를 열 수 없어 이번 실행에서는 버전을 보관하지 않습니다. 탐색·감시·파일 작업은 그대로 됩니다.</span><button class="btn">자세히</button></div>`);
+    head.innerHTML = readmeHead(`<span class="ev up">▲ 수정</span><span class="num">14:31:52</span><span>+240 B</span>`, '');
+    body.innerHTML = `<div class="empty" style="padding:24px 0"><h3>이력이 꺼져 있어 변경 내용을 비교할 수 없습니다</h3>
+      <p>이력 폴더 <code>~/.local/share/filescope</code>에 쓸 권한이 없습니다. 권한을 고친 뒤 FileScope를 다시 시작하면 그때부터 버전을 보관합니다.</p>
+      <p class="flat" style="font-size:12px">무엇이 바뀌었는지(이벤트, 크기 변동)는 목록과 이벤트 로그에 계속 나타납니다.</p></div>`;
+    return;
+  }
+
+  /* 미리보기 */
+  if (S === 'pre') {
+    head.innerHTML = readmeHead(stdMeta, `<button class="btn">변경 내용</button><button class="btn" aria-pressed="true">미리보기</button>`);
+    body.innerHTML = `<div class="modebar"><span class="ro">${ico('lock')}읽기 전용</span><span>UTF-8 · <span class="num">14</span>줄 · 4.9 KB</span><button class="btn">${ico('edit')}편집 <span class="kbd">F4</span></button></div>` + codeBlock(DOC);
+    return;
+  }
+  if (S === 'pre-edit') {
+    const lines = DOC.slice(); lines[13] = '대기열이 넘치면 다시 검사해 맞춘다. 맞춘 시각은';
+    head.innerHTML = readmeHead(`<span class="dirty">● 저장 안 됨</span><span>편집 시작 14:33:10 (v7 기준)</span>`, `<button class="btn primary">저장 <span class="kbd">Ctrl+S</span></button><button class="btn">편집 취소</button>`);
+    body.innerHTML = `<div class="modebar"><span class="ro">${ico('edit')}편집 중</span><span>UTF-8 · 14줄</span></div>` + codeBlock(lines, 'edit', 13);
+    return;
+  }
+  if (S === 'pre-conflict' || S === 'pre-overwrite') {
+    const lines = DOC.slice(); lines[13] = '대기열이 넘치면 다시 검사해 맞춘다. 맞춘 시각은';
+    head.innerHTML = readmeHead(`<span class="dirty">● 저장 안 됨</span><span>편집 시작 14:33:10 (v7 기준)</span>`, '');
+    const sub = S === 'pre-overwrite' ? `<div class="sub"><p>디스크의 v8 내용을 이 편집본으로 바꿉니다. v8은 이력에 남아 나중에 되돌릴 수 있습니다.</p>
+        <div><button class="btn" id="ow-cancel">돌아가기</button><button class="btn danger">v8 위에 덮어쓰기</button></div></div>` : '';
+    body.innerHTML = `<div class="confirm" role="alertdialog" aria-labelledby="cf-t" aria-describedby="cf-d" style="margin:0 0 12px">
+      <h5 id="cf-t">${ico('warn')}편집하는 동안 다른 프로그램이 이 파일을 바꿨습니다</h5>
+      <p id="cf-d">지금 저장하면 그 변경을 덮어씁니다. 어떻게 할지 고르세요.</p>
+      <dl class="stamps"><dt>편집 기준</dt><dd>v7 · 14:31:52 · 4.9 KB</dd><dt>디스크 지금</dt><dd>v8 · 14:34:02 · 5.1 KB (+184 B)</dd></dl>
+      <div><button class="btn" ${S === 'pre-conflict' ? 'id="cf-cancel"' : ''}>취소</button><button class="btn">${ico('reload')}다시 읽기</button><button class="btn">덮어쓰기…</button></div>
+      ${sub}</div>
+      <p class="foot-note" style="margin:0 0 10px">취소: 편집을 이어 가고 디스크 내용은 그대로 둡니다. 다시 읽기: 편집본을 버리고 v8을 엽니다.</p>` + codeBlock(lines, 'edit dimmed', 13);
+    setTimeout(() => (S === 'pre-overwrite' ? $('ow-cancel') : $('cf-cancel'))?.focus(), 0);
+    return;
+  }
+  if (S === 'pre-bad' || S === 'pre-big') {
+    const bad = S === 'pre-bad';
+    head.innerHTML = fileHead(bad ? 'dump.dat' : 'build-full.log', bad ? '~/projects/filescope/dump.dat' : '~/projects/filescope/build-full.log', '', '');
+    body.innerHTML = `<div class="empty" style="padding:24px 0"><h3>${bad ? '텍스트로 열 수 없습니다' : '미리보기 한도(4 MiB)를 넘는 파일입니다'}</h3>
+      <p>${bad ? 'UTF-8이 아닌 바이트(첫 위치 <code>0x1f40</code>)나 NUL 문자가 들어 있습니다. 내용을 바꾸지 않도록 미리보기와 편집을 막았습니다.' : '이 파일은 <span class="num">18.6 MB</span>입니다. 앱이 멈추지 않도록 미리보기와 편집은 4 MiB까지만 합니다.'}</p>
+      <dl class="facts"><dt>크기</dt><dd>${bad ? '2,048 KB' : '19,503,211 B'}</dd><dt>종류</dt><dd>${bad ? '알 수 없는 바이너리' : '텍스트 로그'}</dd></dl>
+      <div style="margin-top:14px"><button class="btn">기본 프로그램으로 열기</button></div></div>`;
+  }
+}
+
+/* ---------- 트레이 ---------- */
+function renderTray() {
+  $('app').style.display = 'none';
+  const stage = document.createElement('div');
+  stage.className = 'tray-stage';
+  stage.style.height = 'calc(100vh - 36px)';
+  const P = [['~/projects/filescope', '하위 폴더 포함'], ['~/notes', '하위 폴더 포함'], ['~/.config/app', '이 폴더만'],
+    ['~/projects/website', '하위 폴더 포함'], ['~/Downloads', '이 폴더만'], ['/srv/shared/team-docs/2026', '하위 폴더 포함']];
+  const li = ([p, m]) => `<li>${ico('folder')}<span class="p" title="${esc(p)}">${esc(p)}</span><span class="m">${m}</span></li>`;
+  stage.innerHTML = `<h4>요약 창: 감시 경로가 3개를 넘으면 3개만 보이고 “외 N개”로 접는다. 펼치면 최대 7행까지 보이고 그 이상은 이 목록만 스크롤한다.</h4>
+    <section class="win" aria-label="FileScope 요약 (접힘)"><div class="whb"><h3>FileScope 요약</h3><button aria-label="요약 닫기">${ico('x')}</button></div>
+      <div class="wst"><span class="dot"></span>감시 중<small>최근 1분<b>9</b>건</small></div>
+      <ul class="paths" aria-label="감시 경로 6개">${P.slice(0, 3).map(li).join('')}
+        <li class="more"><button aria-expanded="false">${ico('chev')}외 <span class="num">3</span>개 경로 더 보기</button></li></ul>
+      <div class="wfoot">(아래 집계·최근 변경은 tray.html과 같다)</div></section>
+    <section class="win" aria-label="FileScope 요약 (펼침)"><div class="whb"><h3>FileScope 요약</h3><button aria-label="요약 닫기">${ico('x')}</button></div>
+      <div class="wst"><span class="dot"></span>감시 중<small>최근 1분<b>9</b>건</small></div>
+      <ul class="paths scroll" aria-label="감시 경로 6개">${P.map(li).join('')}
+        <li class="more"><button aria-expanded="true">${ico('chev')}접기</button></li></ul>
+      <div class="wfoot">(아래 집계·최근 변경은 tray.html과 같다)</div></section>
+    <h4>네이티브 트레이 메뉴: 메뉴는 펼칠 수 없으므로 3개 뒤에 “외 N개 (요약에서 보기)”를 비활성 줄로 둔다.</h4>
+    <div class="nmenu" role="menu" aria-label="FileScope 트레이 메뉴">
+      <div class="dis">● 감시 중 · 최근 1분 9건</div><hr>
+      ${P.slice(0, 3).map(([p]) => `<div class="dis mono">${esc(p)}</div>`).join('')}
+      <div class="dis">외 3개 경로 (요약에서 보기)</div><hr>
+      <div class="dis">▲ README.md 14:31:52</div><div class="dis">▲ build.log 14:31:49</div><div class="dis">● event_queue.h 14:31:37</div><hr>
+      <div>요약 열기</div><div>메인 창 열기</div><hr><div>감시 일시 정지</div><div>감시 폴더 변경…</div><hr><div>FileScope 종료</div></div>`;
+  document.body.appendChild(stage);
+}
+const _render = render;
+render = function () { $('app').style.display = ''; _render(); };
+
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Escape') return;
+  if (S === 'trash-confirm') go('trash');
+  else if (S === 'pre-overwrite') go('pre-conflict');
+});
+render();
+})();
+</script>
+</body>
+</html>
