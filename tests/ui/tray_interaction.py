@@ -11,8 +11,8 @@ from history_interaction import capture, diff_text
 from interaction import (X11, click, close, descendants, display, find, force_overflow,
                          key, named, row, run, showing, wait)
 
-gi.require_version("Gtk", "3.0")
-from gi.repository import Atspi, Gio, GLib, Gtk
+gi.require_version("GdkPixbuf", "2.0")
+from gi.repository import Atspi, GdkPixbuf, Gio, GLib
 
 
 WATCHER = "org.kde.StatusNotifierWatcher"
@@ -111,17 +111,22 @@ def focus_window(node):
 
 def exercise(app, host, fixture, watched, icon_dir):
     wait("StatusNotifier item registers", host.registered)
-    active = host.props()
-    assert active["IconName"] == "filescope-active-symbolic", active
-    assert active["IconAccessibleDesc"] == "FileScope: 감시 중", active
-    assert Path(active["IconThemePath"]) == icon_dir, active
-    theme = Gtk.IconTheme.new()
-    theme.set_search_path([active["IconThemePath"]])
-    for state in ("active", "paused", "warning"):
-        name = f"filescope-{state}-symbolic"
-        icon = theme.lookup_icon(name, 18, 0)
-        assert icon is not None and Path(icon.get_filename()) == icon_dir / f"{name}.svg", name
-        assert icon.load_icon().get_has_alpha(), name
+
+    def check_icon(state, description, timeout=8):
+        expected_path = str(icon_dir / f"filescope-{state}-symbolic.svg")
+
+        def matches():
+            props = host.props()
+            assert props["IconThemePath"] == "", props
+            if (props["IconName"], props["IconAccessibleDesc"]) == (expected_path, description):
+                return props["IconName"]
+            return None
+
+        path = wait(f"{state} SVG and its description", matches, timeout=timeout)
+        icon = GdkPixbuf.Pixbuf.new_from_file_at_scale(path, 18, 18, True)
+        assert icon.get_has_alpha(), path
+
+    check_icon("active", "FileScope: 감시 중")
     rows = host.layout()
     _, status, _ = rows[0]
     _, root, _ = rows[1]
@@ -188,9 +193,7 @@ def exercise(app, host, fixture, watched, icon_dir):
     find(summary, "Ⅱ 일시 정지됨")
     find(summary, "최근 1분 0건")
     wait("pause notice", lambda: notice(summary, "일시 정지 중에는 변경을 기록하지 않습니다"))
-    wait("paused symbolic icon and its description", lambda: (
-        host.props()["IconName"], host.props()["IconAccessibleDesc"]
-    ) == ("filescope-paused-symbolic", "FileScope: 일시 정지됨"))
+    check_icon("paused", "FileScope: 일시 정지됨")
     wait("pause gap opened", lambda: scalar(
         "SELECT count(*) FROM gaps WHERE kind=1 AND ended_at_us IS NULL"
     ))
@@ -230,9 +233,7 @@ def exercise(app, host, fixture, watched, icon_dir):
          lambda: "+ changed during pause" in diff_text(main))
 
     force_overflow(app, marker, watched)
-    wait("kernel overflow reaches the tray", lambda: (
-        host.props()["IconName"], host.props()["IconAccessibleDesc"]
-    ) == ("filescope-warning-symbolic", "FileScope: 대기열 넘침 · 다시 검사함"), timeout=30)
+    check_icon("warning", "FileScope: 대기열 넘침 · 다시 검사함", timeout=30)
     wait("overflow notice is in the native menu", lambda: any(
         props.get("label") == "대기열 넘침 · 다시 검사함" for _, props, _ in host.layout()
     ))
@@ -240,8 +241,7 @@ def exercise(app, host, fixture, watched, icon_dir):
     find(summary, "● 감시 중")
     wait("acknowledged overflow keeps its timestamped notice",
          lambda: notice(summary, "대기열이 넘쳐 다시 검사해 맞췄습니다"))
-    wait("acknowledging overflow restores active icon",
-         lambda: host.props()["IconName"] == "filescope-active-symbolic")
+    check_icon("active", "FileScope: 감시 중")
     assert sum(showing(child) and child.get_name().startswith("메인 창에서 ")
                for child in descendants(summary)) == 5
     capture("tray-overflow")

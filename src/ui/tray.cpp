@@ -159,14 +159,15 @@ class Tray::Impl {
   public:
     Impl(Activate activate, sigc::slot<void()> disconnected)
         : activate_(std::move(activate)), disconnected_(std::move(disconnected)),
-          indicator_(app_indicator_new("filescope", "filescope-active-symbolic",
-                                       APP_INDICATOR_CATEGORY_APPLICATION_STATUS),
+          icon_dir_(Glib::build_filename(
+              Glib::path_get_dirname(Glib::convert_return_gchar_ptr_to_stdstring(
+                  g_file_read_link("/proc/self/exe", nullptr))),
+              "tray-icons")),
+          indicator_(app_indicator_new(
+                         "filescope",
+                         Glib::build_filename(icon_dir_, "filescope-active-symbolic.svg").c_str(),
+                         APP_INDICATOR_CATEGORY_APPLICATION_STATUS),
                      g_object_unref) {
-        const auto icon_path =
-            Glib::build_filename(Glib::path_get_dirname(Glib::convert_return_gchar_ptr_to_stdstring(
-                                     g_file_read_link("/proc/self/exe", nullptr))),
-                                 "tray-icons");
-        app_indicator_set_icon_theme_path(indicator_.get(), icon_path.c_str());
         app_indicator_set_title(indicator_.get(), "FileScope");
         app_indicator_set_menu(indicator_.get(), menu_.gobj());
         connection_signal_ =
@@ -194,13 +195,14 @@ class Tray::Impl {
     void update(TrayState state, std::vector<TrayItem> items) {
         if (state_ != state) {
             state_ = state;
-            const char *name = state == TrayState::PAUSED ? "filescope-paused-symbolic"
-                               : warning_icon(state)      ? "filescope-warning-symbolic"
-                                                          : "filescope-active-symbolic";
+            const char *name = state == TrayState::PAUSED ? "filescope-paused-symbolic.svg"
+                               : warning_icon(state)      ? "filescope-warning-symbolic.svg"
+                                                          : "filescope-active-symbolic.svg";
+            const auto icon_path = Glib::build_filename(icon_dir_, name);
             const auto description =
                 std::string("FileScope: ") +
                 (state == TrayState::RESYNCED ? "대기열 넘침 · 다시 검사함" : state_text(state));
-            app_indicator_set_icon_full(indicator_.get(), name, description.c_str());
+            app_indicator_set_icon_full(indicator_.get(), icon_path.c_str(), description.c_str());
         }
         auto children = menu_.get_children();
         const bool same_actions =
@@ -243,6 +245,7 @@ class Tray::Impl {
     Gtk::Menu menu_;
     std::vector<TrayItem> items_;
     std::optional<TrayState> state_;
+    const std::string icon_dir_;
     std::unique_ptr<AppIndicator, decltype(&g_object_unref)> indicator_;
     gulong connection_signal_ = 0;
 };
