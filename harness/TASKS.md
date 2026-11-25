@@ -37,8 +37,8 @@
 | R2-T06 mon 일시 정지 | VERIFY (82a7c77 병합, R2 묶음 QA 대기) | R2 계약 승인(완료) |
 | R2-T07 trash | VERIFY (264d259 병합, R2 묶음 QA 대기) | R2 계약 승인, R2-T01, R2-T02 |
 | R2-T08 search | VERIFY (51cac30 병합, R2 묶음 QA 대기) | R2 계약 승인, R2-T01 |
-| R2-T09 ui 변경 내용 패널 | READY | R2-T00, R2-T03, R2-T05 |
-| R2-T10 ui 트레이·요약 창·일시 정지 | BACKLOG | R2-T06, R2-T09 |
+| R2-T09 ui 변경 내용 패널 | VERIFY (38c4cad 병합, R2 묶음 QA 대기) | R2-T00, R2-T03, R2-T05 |
+| R2-T10 ui 트레이·요약 창·일시 정지 | READY | R2-T06, R2-T09 |
 | R2-T11 ui 검색·휴지통·미리보기 | BACKLOG | R2-T07, R2-T08, R2-T10, U-10 시안 확정 |
 
 의존 순서: R0-002 → R1-T01 → {R1-T02, R1-T04, R1-T05, R1-T07 병렬} → R1-T03(T02 필요) → R1-T06. 독립 QA는 R1 전체를 묶어 한 번 한다(R0-002 포함, PROGRESS 미결 사항 E-6).
@@ -490,7 +490,7 @@ R2 의존 순서: {R2-T00, R2-T01 병렬} → {R2-T02(T00 뒤), R2-T03, R2-T04, 
 ## R2-T09 ui 변경 내용 패널
 
 - Task ID / 요구사항 ID: R2-T09 / HIS-007, HIS-008, HIS-009, HIS-011, HIS-012의 화면, UI-012(패널 접기), 이벤트 §10 연결(mon → his)
-- 상태: READY (R2-T00·R2-T03·R2-T05 병합됨)
+- 상태: VERIFY (38c4cad 병합, R2 묶음 QA 대기)
 - 목표: MainWindow가 `his::History`를 열고(실패해도 창은 뜸) 이벤트 §10대로 mon과 잇는다. 변경 내용 패널(머리, 요약 줄, 텍스트 줄 Diff, 이미지 나란히/겹쳐 밀기, 바이너리, 새 파일, 폴더, 삭제됨, 되돌리기 확인), "전체 이력" 버전 목록과 버전 선택 비교, 머리줄 패널 토글을 DESIGN 인터페이스 §7 "R2 추가"대로 만든다. `src/ui/CMakeLists.txt`에 diff·his 링크.
 - 시각 기준: 루트 DESIGN.md "Change-Detail Panel", "GTK3 구현 메모"(위젯 대응, §2 변경 내용 패널), docs/design/prototype/main-window.html 패널. 시안의 복합 문서(md·docx 블록) 표시는 R2에 없다: md는 줄 Diff, docx·odt는 바이너리 표시. 시안 없는 화면(전체 이력 목록, 이력 끔 표시)은 U-10.
 - 제외 범위: 트레이·요약 창·일시 정지(R2-T10), 검색·휴지통 화면(R2-T11), 단어 단위 문서 Diff(R3).
@@ -519,7 +519,7 @@ R2 의존 순서: {R2-T00, R2-T01 병렬} → {R2-T02(T00 뒤), R2-T03, R2-T04, 
 ## R2-T10 ui 트레이·요약 창·일시 정지
 
 - Task ID / 요구사항 ID: R2-T10 / MON-022 화면, 트레이 아이콘·네이티브 메뉴·요약 창(PRODUCT.md, U-1·U-2 결정), 창 닫아도 감시 유지
-- 상태: BACKLOG (R2-T06·R2-T09 병합 후 READY)
+- 상태: READY (R2-T06·R2-T09 병합됨)
 - 목표: DESIGN 인터페이스 §7 "R2 추가"의 트레이(libayatana-appindicator3, `gobj()`로 C API), 메뉴 항목 목록을 만드는 순수 함수, 요약 창, 일시 정지 연결(Watcher + History), 창 닫기 동작(트레이 연결 시 숨김), `src/ui/CMakeLists.txt`에 ayatana 링크.
 - 시각 기준: 루트 DESIGN.md "Tray Icon", "Tray Menu", "Summary Window", "GTK3 구현 메모" §3, docs/design/prototype/tray.html. 메뉴는 스타일하지 않는다(Yaru 테마).
 - 제외 범위: 감시 폴더 변경 화면 신설(메뉴 "감시 폴더 변경…"은 메인 창을 보이는 것까지, 그 밖은 U-10), 시작 시 자동 실행, 루트별 일시 정지.
