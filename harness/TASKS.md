@@ -23,11 +23,11 @@
 | R0-002 C++ 전환 (빌드 하네스) | VERIFY (b7ca5d3, make verify 0, 독립 QA는 R1 묶음) | ADR-0007, 의존성 설치 |
 | R1-T01 core C++ 포팅 | VERIFY (1bdb270, make verify 0) | R0-002 |
 | R1-T02 job C++ 포팅 | VERIFY (91ba40b) | R1-T01 |
-| R1-T03 fs | VERIFY (74eb5ae) | R1-T01, R1-T02 |
-| R1-T04 mon | VERIFY (4cc1116) | R1-T01 |
+| R1-T03 fs | APPROVED (74eb5ae, R1 QA PASS 8c469a9) | R1-T01, R1-T02 |
+| R1-T04 mon | APPROVED (4cc1116, R1 QA PASS 8c469a9) | R1-T01 |
 | R1-T05 nav C++ 포팅 | VERIFY (2eab368) | R1-T01 |
-| R1-T06 ui | VERIFY (a148ce3) | R1-T03, R1-T04, R1-T05, R1-T07 |
-| R1-T07 dash | VERIFY (08424c7) | R1-T01 |
+| R1-T06 ui | APPROVED (a148ce3, R1 QA PASS 8c469a9) | R1-T03, R1-T04, R1-T05, R1-T07 |
+| R1-T07 dash | APPROVED (08424c7, R1 QA PASS 8c469a9) | R1-T01 |
 
 의존 순서: R0-002 → R1-T01 → {R1-T02, R1-T04, R1-T05, R1-T07 병렬} → R1-T03(T02 필요) → R1-T06. 독립 QA는 R1 전체를 묶어 한 번 한다(R0-002 포함, PROGRESS 미결 사항 E-6).
 

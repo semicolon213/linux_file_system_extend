@@ -9,9 +9,7 @@ Coordinator가 갱신한다. 작업별 ID, 담당, 기준 SHA, 상태, 차단 �
 | 요구사항·설계 계약 | R1 계약 승인(ARCH-001, 8615d98). 사용자 결정 U-1~U-9 기록 완료(§3 결정 기록). C++17 + gtkmm-3.0 판으로 갱신(ADR-0007 승인, ADR-0008 제안, 2026-11-24) |
 | 디자인 (메인 창, 트레이) | APPROVED (사용자 확정, 커밋 6d621d5). 루트 PRODUCT.md·DESIGN.md, docs/design/prototype. 언어 변경과 무관하게 유효 |
 | 빌드·테스트 하네스 | R0-002 C++ 전환 VERIFY (b7ca5d3) |
-| R1-T01 core, R1-T02 job, R1-T05 nav, R1-T07 dash, R1-T04 mon | VERIFY (1bdb270, 91ba40b, 2eab368, 08424c7, 4cc1116). 개발자 게이트 통과, 묶음 QA 대기 |
-| R1-T03 fs | VERIFY (74eb5ae). 병합 후 게이트 0, tsan 5회 0 |
-| R1-T06 ui | VERIFY (dd42875, a148ce3). R1 묶음 QA FAIL(a8d89fa) → 수정 중 |
+| R0-002, R1-T01~T07 | APPROVED (R1 묶음 QA PASS, 8c469a9, docs/qa/r1-qa-report.md). 실제 Ubuntu 수동 검증(보고서 끝 체크리스트 15항목)은 사용자 수행 대기 |
 | UI 및 고급 기능 (R2~) | PLANNED |
 
 ### 이력
@@ -28,6 +26,7 @@ Coordinator가 갱신한다. 작업별 ID, 담당, 기준 SHA, 상태, 차단 �
 - 2026-11-25: R1 묶음 독립 QA(a8d89fa) FAIL. 게이트는 모두 0. F1 Critical: EXDEV 이동 폴백이 복사 실패 원본까지 삭제(데이터 손실, fs.cpp:437-443·522-526). F2: lsan.supp GLib 패턴이 프로젝트 누수를 가림. F3: R1-T06 UI 동작 테스트·수동 검증 기록 없음. F4 재귀 TOCTOU, F5 OVERWRITE 이동 대상 선삭제, F6 tsan 억제 범위, F7 job 종료 UAF 가능성, F8 화면(빈 띠 60px, 1분봉 축 라벨 겹침, 0건 dim). 수정 배정: R1-FIX-02(fs·job·억제), R1-FIX-03(UI 테스트·화면). 세션 집계 0건 dim은 메인 창에도 적용(Coordinator 결정). 실제 Ubuntu 수동 검증은 사용자 환경 필요.
 - 2026-11-25: R1-FIX-03(791367c, UI 동작 테스트 make ui-interaction 12묶음, F8 화면, UI 누수) 병합. R1-FIX-02 첫 제출(9aefa0d)은 디버그 심볼 GLib 전제로 기본 환경 tsan 10/10 실패라 반려, 재제출(8388c6c: nav 완료를 GTask 밖으로, tsan.supp는 race:^g_queue_pop_tail$ 하나, lsan.supp는 fontconfig만) 병합. 병합 후 verify·integration·stress·benchmark·ui-interaction 0, 기본 GLib tsan 10회 0. E-10 억제 범위 축소로 F2·F6 해소. e2e 간헐 실패(빈 smoke 출력)와 취소 문구 덮어쓰기는 FIX-03 후속.
 - 2026-11-25: R1-FIX-03 후속(1408171: e2e 전용 D-Bus로 간헐 실패 해소, 실패 단계·stderr 출력, 미감시 띠와 취소 결과 띠 동시 표시) 병합. 병합 후 make verify 3회 0, ui-interaction 0. R1 재QA 착수.
+- 2026-11-25: R1 재QA PASS(8c469a9). F1~F8 해소 재현 확인. 새 발견 Low: N1 copy+OVERWRITE 디렉터리 대상 선삭제(fs.cpp:473), N2 EXDEV 이동 후 원본 검사가 최상위만(fs.cpp:614-623), N3 목록 사전순 정렬 → R2 착수 전 정리 작업으로 배정 예정. R0-002·R1 APPROVED.
 
 ## 2. 요구사항 추적표
 
