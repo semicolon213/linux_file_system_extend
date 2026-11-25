@@ -165,6 +165,23 @@ class Watcher::Impl {
         return true;
     }
 
+    void pause() {
+        if (!main_paused_) {
+            main_paused_ = true;
+            ++main_pause_generation_;
+            enqueue(Command{CommandKind::PAUSE});
+        }
+    }
+
+    void resume() {
+        if (main_paused_) {
+            main_paused_ = false;
+            enqueue(Command{CommandKind::RESUME});
+        }
+    }
+
+    bool paused() const { return main_paused_; }
+
     std::vector<WatchInfo> list_roots() const {
         std::vector<WatchInfo> result;
         result.reserve(main_roots_.size());
@@ -225,7 +242,16 @@ class Watcher::Impl {
     sigc::signal<void(const WatchInfo &, const std::optional<core::Error> &)> state_signal_;
 
   private:
-    enum class CommandKind : std::uint8_t { ADD, REMOVE, OVERFLOW, CAPACITY, MOVE_WINDOW, STOP };
+    enum class CommandKind : std::uint8_t {
+        ADD,
+        REMOVE,
+        PAUSE,
+        RESUME,
+        OVERFLOW,
+        CAPACITY,
+        MOVE_WINDOW,
+        STOP,
+    };
     struct Command {
         explicit Command(CommandKind command_kind) : kind(command_kind) {}
         CommandKind kind;
@@ -258,7 +284,10 @@ class Watcher::Impl {
         std::optional<core::Error> error;
         bool notify = true;
     };
-    using Batch = std::vector<core::EventPtr>;
+    struct Batch {
+        std::uint64_t pause_generation;
+        std::vector<core::EventPtr> events;
+    };
     using Message = std::variant<StateMessage, Batch>;
 
     void enqueue(Command command) {
@@ -282,7 +311,6 @@ class Watcher::Impl {
     }
 
     void run_loop() {
-        alignas(inotify_event) std::array<std::uint8_t, kReadBufferSize> buffer{};
         bool stopping = false;
         while (!stopping) {
             const int timeout = poll_timeout_ms();
@@ -297,20 +325,8 @@ class Watcher::Impl {
                 }
                 stopping = process_commands();
             }
-            if ((descriptors[0].revents & POLLIN) != 0) {
-                for (;;) {
-                    const ssize_t count = read(inotify_fd_.get(), buffer.data(), buffer.size());
-                    if (count < 0 && errno == EINTR) {
-                        continue;
-                    }
-                    if (count < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
-                        break;
-                    }
-                    if (count <= 0) {
-                        break;
-                    }
-                    process_raw(buffer.data(), static_cast<std::size_t>(count));
-                }
+            if (!stopping && (descriptors[0].revents & POLLIN) != 0) {
+                drain_inotify();
             }
             expire_moves();
             flush_if_due();
@@ -349,6 +365,20 @@ class Watcher::Impl {
             case CommandKind::REMOVE:
                 stop_root(command.id, WatchReason::USER, false);
                 break;
+            case CommandKind::PAUSE:
+                worker_paused_ = true;
+                ++worker_pause_generation_;
+                batch_.clear();
+                publish_pause_transition();
+                break;
+            case CommandKind::RESUME:
+                // Finish input and unmatched moves from the paused interval before reporting
+                // totals.
+                drain_inotify();
+                expire_moves(true);
+                worker_paused_ = false;
+                publish_pause_transition();
+                break;
             case CommandKind::OVERFLOW:
                 handle_overflow();
                 break;
@@ -376,14 +406,19 @@ class Watcher::Impl {
         root.device = static_cast<std::uint64_t>(status.st_dev);
         const core::WatchId root_id = root.info.id;
         roots_.emplace(root_id, std::move(root));
-        auto &stored = roots_.at(root_id);
-        const bool success = scan_directory(stored, stored.info.path, false);
-        if (stored.info.watch_count == 0) {
+        auto &registering = roots_.at(root_id);
+        const bool success = scan_directory(registering, registering.info.path, false);
+        if (registering.info.watch_count == 0) {
             const int saved = errno == 0 ? EIO : errno;
-            fail_existing_root(stored.info.id, saved);
+            fail_existing_root(root_id, saved);
             return;
         }
-        drain_registration_events();
+        drain_inotify();
+        auto found = roots_.find(root_id);
+        if (found == roots_.end()) {
+            return;
+        }
+        auto &stored = found->second;
         stored.info.total_known = true;
         stored.info.state = stored.info.total_partial ? WatchState::DEGRADED : WatchState::ACTIVE;
         stored.info.reason =
@@ -393,10 +428,14 @@ class Watcher::Impl {
             error = core::make_error(core::ErrorCode::WATCH_LIMIT,
                                      "inotify_add_watch: watch limit reached");
         }
-        publish_state(stored.info, std::move(error));
+        if (worker_paused_) {
+            publish_paused(stored.info);
+        } else {
+            publish_state(stored.info, std::move(error));
+        }
     }
 
-    void drain_registration_events() {
+    void drain_inotify() {
         alignas(inotify_event) std::array<std::uint8_t, kReadBufferSize> buffer{};
         for (;;) {
             const ssize_t count = read(inotify_fd_.get(), buffer.data(), buffer.size());
@@ -531,7 +570,19 @@ class Watcher::Impl {
         const bool is_dir = (raw.mask & IN_ISDIR) != 0U;
 
         if ((raw.mask & IN_IGNORED) != 0U) {
-            erase_watch(raw.wd, root);
+            if (path == root.info.path) {
+                WatchInfo info = root.info;
+                clear_root_watches(root);
+                roots_.erase(root_it);
+                info.state = WatchState::ERROR;
+                info.reason = WatchReason::LOST;
+                info.watch_count = 0;
+                info.total_known = false;
+                publish_state(info,
+                              core::make_error(core::ErrorCode::IO, "inotify root watch lost"));
+            } else {
+                erase_watch(raw.wd, root);
+            }
             return;
         }
         if ((raw.mask & (IN_DELETE_SELF | IN_MOVE_SELF | IN_UNMOUNT)) != 0U &&
@@ -713,12 +764,12 @@ class Watcher::Impl {
         append_event(std::move(event));
     }
 
-    void expire_moves() {
+    void expire_moves(bool all = false) {
         const auto now = monotonic_ns();
         std::vector<std::uint32_t> expired;
         for (const auto &[cookie, move] : pending_moves_) {
-            if (now - move.received_ns >=
-                static_cast<std::int64_t>(move_window_ms_) * 1'000'000LL) {
+            if (all || now - move.received_ns >=
+                           static_cast<std::int64_t>(move_window_ms_) * 1'000'000LL) {
                 auto root = roots_.find(move.root_id);
                 if (root != roots_.end()) {
                     const std::uint64_t before = root->second.info.total_bytes;
@@ -838,6 +889,9 @@ class Watcher::Impl {
     }
 
     void append_event(core::Event event) {
+        if (worker_paused_) {
+            return;
+        }
         if (!batch_.empty() &&
             (event.kind == core::EventKind::MODIFY || event.kind == core::EventKind::ATTRIB)) {
             core::Event &previous = batch_.back();
@@ -879,22 +933,57 @@ class Watcher::Impl {
             handle_overflow();
             return;
         }
-        Batch output;
-        output.reserve(batch_.size());
+        Batch output{worker_pause_generation_, {}};
+        output.events.reserve(batch_.size());
         for (auto &event : batch_) {
-            output.push_back(core::make_event(std::move(event)));
+            output.events.push_back(core::make_event(std::move(event)));
         }
         batch_.clear();
-        pending_events_.fetch_add(output.size());
+        pending_events_.fetch_add(output.events.size());
         publish_message(std::move(output));
     }
 
+    static bool can_pause(WatchState state) {
+        return state == WatchState::ACTIVE || state == WatchState::DEGRADED ||
+               state == WatchState::RESYNCING;
+    }
+
+    void publish_pause_transition() {
+        for (const auto &[id, root] : roots_) {
+            static_cast<void>(id);
+            if (!can_pause(root.info.state)) {
+                continue;
+            }
+            if (worker_paused_) {
+                publish_paused(root.info);
+            } else {
+                std::optional<core::Error> error;
+                if (root.info.reason == WatchReason::WATCH_LIMIT) {
+                    error = core::make_error(core::ErrorCode::WATCH_LIMIT,
+                                             "inotify_add_watch: watch limit reached");
+                }
+                publish_state(root.info, std::move(error));
+            }
+        }
+    }
+
+    void publish_paused(WatchInfo info) {
+        info.state = WatchState::PAUSED;
+        info.reason = WatchReason::NONE;
+        publish_message(StateMessage{std::move(info), std::nullopt, true});
+    }
+
     void publish_state(const WatchInfo &info, std::optional<core::Error> error) {
-        publish_message(StateMessage{info, std::move(error), true});
+        if (!worker_paused_ || info.state == WatchState::STOPPED ||
+            info.state == WatchState::ERROR) {
+            publish_message(StateMessage{info, std::move(error), true});
+        }
     }
 
     void publish_snapshot(const WatchInfo &info) {
-        publish_message(StateMessage{info, std::nullopt, false});
+        if (!worker_paused_) {
+            publish_message(StateMessage{info, std::nullopt, false});
+        }
     }
 
     void publish_message(Message message) {
@@ -922,15 +1011,19 @@ class Watcher::Impl {
                 }
             } else {
                 auto &batch = std::get<Batch>(message);
-                pending_events_.fetch_sub(batch.size());
-                for (const auto &event : batch) {
+                pending_events_.fetch_sub(batch.events.size());
+                // A pause also invalidates batches queued before the worker saw its command.
+                if (main_paused_ || batch.pause_generation != main_pause_generation_) {
+                    continue;
+                }
+                for (const auto &event : batch.events) {
                     auto root = main_roots_.find(event->watch_id);
                     if (root != main_roots_.end() && event->root_total.has_value()) {
                         root->second.total_bytes = event->root_total.value_or(0);
                         root->second.total_known = true;
                     }
                 }
-                event_signal_.emit(batch);
+                event_signal_.emit(batch.events);
             }
         }
     }
@@ -1049,6 +1142,8 @@ class Watcher::Impl {
     mutable std::unordered_map<core::WatchId, WatchInfo> main_roots_;
     core::WatchId next_watch_id_ = 1;
     std::uint32_t watch_limit_ = 0;
+    bool main_paused_ = false;
+    std::uint64_t main_pause_generation_ = 0;
     std::mutex command_mutex_;
     std::deque<Command> commands_;
     std::mutex delivery_mutex_;
@@ -1063,6 +1158,8 @@ class Watcher::Impl {
     std::uint64_t next_gap_id_ = 1;
     std::uint32_t queue_capacity_ = kDefaultQueueCapacity;
     std::uint32_t move_window_ms_ = 50;
+    bool worker_paused_ = false;
+    std::uint64_t worker_pause_generation_ = 0;
 };
 
 Watcher::Watcher(std::unique_ptr<Impl> impl) : impl_(std::move(impl)) {}
@@ -1086,6 +1183,9 @@ core::Result<core::WatchId> Watcher::add_root(const std::string &path, WatchMode
     return impl_->add_root(path, mode);
 }
 bool Watcher::remove_root(core::WatchId id) { return impl_->remove_root(id); }
+void Watcher::pause() { impl_->pause(); }
+void Watcher::resume() { impl_->resume(); }
+bool Watcher::paused() const { return impl_->paused(); }
 std::vector<WatchInfo> Watcher::list_roots() const { return impl_->list_roots(); }
 WatchUsage Watcher::usage() const { return impl_->usage(); }
 core::WatchId Watcher::find_root(const std::string &path) const { return impl_->find_root(path); }

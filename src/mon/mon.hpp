@@ -13,7 +13,15 @@
 
 namespace filescope::mon {
 
-enum class WatchState : std::uint8_t { REGISTERING, ACTIVE, DEGRADED, RESYNCING, STOPPED, ERROR };
+enum class WatchState : std::uint8_t {
+    REGISTERING,
+    ACTIVE,
+    DEGRADED,
+    RESYNCING,
+    STOPPED,
+    ERROR,
+    PAUSED,
+};
 enum class WatchReason : std::uint8_t {
     NONE,
     USER,
@@ -62,6 +70,9 @@ class Watcher {
 
     core::Result<core::WatchId> add_root(const std::string &path, WatchMode mode);
     bool remove_root(core::WatchId id);
+    void pause();
+    void resume();
+    bool paused() const;
     std::vector<WatchInfo> list_roots() const;
     WatchUsage usage() const;
     core::WatchId find_root(const std::string &path) const;
