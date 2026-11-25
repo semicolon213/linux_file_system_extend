@@ -1,0 +1,2 @@
+* -text whitespace=cr-at-eol
+markdown.expected whitespace=-blank-at-eol
