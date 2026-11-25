@@ -18,7 +18,7 @@
 - `make verify`는 build, test, format-check, lint, architecture, asan, ubsan, tsan, e2e를 차례로 실행한다(G1, G2, G4~G7). G3·G8은 따로 실행한다.
 - `integration`·`stress`·`benchmark`는 `ctest --preset debug -L <라벨> --no-tests=error`라 해당 라벨 테스트가 없으면 비0으로 끝난다. 이 경우 BLOCKED(또는 NOT_RUN)이며 PASS가 아니다. 해당 없음은 QA 근거와 함께 N/A로 적는다.
 - 통합 시 적용 가능한 게이트 전체를 다시 실행한다. sanitizer는 별도 빌드에서 실행한다. 로그와 SHA를 보존한다.
-- C++ sanitizer: 프리셋마다 `-fsanitize=<종류> -fno-omit-frame-pointer`를 컴파일과 링크 모두에 준다(libstdc++ 컨테이너 포함). UBSan은 `-fno-sanitize-recover=undefined`. TSan은 기존처럼 `setarch -R`로 실행한다. glibmm/gtkmm/sigc++는 계측되지 않은 시스템 라이브러리이므로, 그 안에서 난 TSan 보고를 억제해야 하면 `scripts/tsan.supp`에 항목마다 이유를 적고 Coordinator 승인을 받는다(프로젝트 코드 보고는 억제 금지).
+- C++ sanitizer: 프리셋마다 `-fsanitize=<종류> -fno-omit-frame-pointer`를 컴파일과 링크 모두에 준다(libstdc++ 컨테이너 포함). UBSan은 `-fno-sanitize-recover=undefined`. TSan은 기존처럼 `setarch -R`로 실행한다. glibmm/gtkmm/sigc++는 계측되지 않은 시스템 라이브러리이므로, 그 안에서 난 TSan 보고를 억제해야 하면 `tests/tsan.supp`(Makefile tsan 타깃이 TSAN_OPTIONS로 적용)에 항목마다 이유를 적고 Coordinator 승인을 받는다(프로젝트 코드 보고는 억제 금지). 승인된 항목: `called_from_lib:libglib-2.0.so.0`(GLib 스레드 풀·메인 컨텍스트 큐 전달 오탐, E-10, 7252b74).
 
 ## 2. 완료 조건 (Definition of Done)
 
