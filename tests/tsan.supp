@@ -1,2 +1,8 @@
-# The uninstrumented GLib pool and main context hand off queue nodes and wakeups.
-called_from_lib:libglib-2.0.so.0
+# Queue-node disposal by GLib's pool-spawner.
+race:^g_queue_pop_tail$
+# GIO async signal and source teardown in the uninstrumented GLib runtime.
+# Symbolize GLib's internal frames with the matching GLib debug symbols.
+race:^g_closure_unref$
+race:^g_signal_handlers_disconnect_matched$
+race:^g_source_destroy_internal$
+race:^g_source_unref_internal$

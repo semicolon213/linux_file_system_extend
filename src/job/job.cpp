@@ -257,6 +257,7 @@ class JobQueueImpl {
                 });
         }
 
+        const JobId id = data.id;
         JobState terminal_state = JobState::DONE;
         std::optional<core::Error> terminal_error;
         {
@@ -275,8 +276,8 @@ class JobQueueImpl {
             data.terminal_error = terminal_error;
         }
 
-        post_progress(data.id, std::move(final_progress));
-        post_state(data.id, terminal_state, terminal_error, true);
+        post_progress(id, std::move(final_progress));
+        post_state(id, terminal_state, terminal_error, true);
     }
 
     void post_state(JobId id, JobState state, std::optional<core::Error> error,
