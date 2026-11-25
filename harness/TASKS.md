@@ -411,7 +411,7 @@ R2 의존 순서: {R2-T00, R2-T01 병렬} → {R2-T02(T00 뒤), R2-T03, R2-T04, 
   - 제외: `.git/config`, `.ssh/id_rsa`, `node_modules/x.js`, `a.swp`, data_dir 안 파일 쓰기 → 버전 없음. is_excluded 단위 표(DB §8 규칙마다 해당·비해당 사례, `/a/.gitignore`와 `/a/keys.txt`는 제외 아님).
   - 기준 스냅샷: 파일 5개(하나 2MiB) 루트 → BASELINE 4개. History를 닫고 파일 하나를 바꾼 뒤 다시 열어 scan_root → 바뀐 파일만 새 BASELINE, gaps NOT_RUNNING 닫힘, 바뀌지 않은 파일은 새 버전 없음. baseline_max_files=3 → 3개에서 멈춤. 2만 파일 순회 중 load_history_async가 1초 안에 답함.
   - 일시 정지: note_pause(true) → 파일 변경(이벤트 없음) → note_pause(false), scan_root → 바뀐 파일 새 버전, gaps PAUSE 행, gap_after_latest 처리.
-  - HIS-011: Given v1 "a", v2 "b"(현재), When restore_async(v1, NONE) → NOT_CONFIRMED, 파일 불변. CONFIRMED → 파일 "a", 모드 유지, PRE_RESTORE 버전("b") 생성, 이어 mon 이벤트로 AUTO 버전("a"). 현재 파일이 8MiB 초과 → TOO_LARGE, 파일 불변. 파일 없음 → NOT_FOUND.
+  - HIS-011: Given v1 "a", v2 "b"(현재), When restore_async(v1, NONE) → NOT_CONFIRMED, 파일 불변. CONFIRMED → 파일 "a", 모드는 v1에 저장된 mode, 현재 내용 "b"가 최신 v2와 같으므로 새 PRE_RESTORE 없이 v2 유지(DB §5.3 중복 생략), 이어 mon 이벤트로 AUTO 버전("a"). 현재 파일이 최신과 다르면(외부 수정 "c", 캡처 전) PRE_RESTORE("c") 생성 뒤 복원. 현재 파일이 8MiB 초과 → TOO_LARGE, 파일 불변. 파일 없음 → NOT_FOUND.
   - HIS-012: Given 버전 있는 파일을 외부 rm, Then deleted_at_us 기록, recover_async → 원래 경로에 내용 복원, 삭제 표시 해제. 같은 이름이 이미 있으면 EXISTS, 내용 불변. 부모 디렉터리가 사라졌으면 NOT_FOUND.
   - E09: 버전 없던 파일(제외 경로나 8MiB 초과) 삭제 → load_history의 versions가 비어 있음(ui가 복구 불가 표시).
   - 종료: 캡처 대기·기준 스냅샷 중 shutdown → 반환 후 신호 없음, tmp/ 비어 있음.
