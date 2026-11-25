@@ -68,7 +68,6 @@ PRAGMA user_version=1;
 
 constexpr std::array migrations{schema_v1};
 constexpr std::uint64_t event_trim_interval = 10000;
-constexpr std::uint64_t max_content_bytes = 8ULL * 1024 * 1024;
 constexpr std::int64_t us_per_day = 24LL * 60 * 60 * G_USEC_PER_SEC;
 constexpr std::int64_t ns_per_second = 1000000000;
 enum class Gap : std::uint8_t { OVERFLOW, PAUSE, NOT_RUNNING, HIS_BACKLOG };
@@ -421,31 +420,100 @@ class Store::Impl {
         }
     }
 
-    std::optional<Version> capture(const std::string &path, Origin origin,
-                                   const std::function<void()> &after_copy) {
+    Capture capture(const std::string &path, Origin origin, const std::function<void()> &after_copy,
+                    bool defer_retry, std::optional<std::uint64_t> baseline_bytes) {
         const auto valid = core::validate_absolute(path);
         if (!valid) {
             throw valid.error();
         }
-        if (owned_path(path)) {
-            return std::nullopt;
+        if (is_excluded(path, options_.data_dir)) {
+            if (origin == Origin::PRE_RESTORE) {
+                throw core::make_error(ErrorCode::NOT_SUPPORTED, "Path is excluded from history");
+            }
+            return {};
         }
         if (over_limit_) {
             throw no_space();
         }
 
-        for (int attempt = 0; attempt < 2; ++attempt) {
-            bool changed = false;
-            auto version = capture_once(path, origin, after_copy, changed);
-            if (!changed) {
-                return version;
-            }
-            if (attempt == 0) {
-                std::this_thread::sleep_for(
-                    std::chrono::milliseconds(options_.limits.capture_delay_ms));
-            }
+        auto capture = capture_once(path, origin, after_copy, baseline_bytes);
+        if (capture.changed && !defer_retry) {
+            std::this_thread::sleep_for(
+                std::chrono::milliseconds(options_.limits.capture_delay_ms));
+            capture = capture_once(path, origin, after_copy, baseline_bytes);
         }
-        return std::nullopt;
+        return capture;
+    }
+
+    void start_scan() {
+        transaction([&] {
+            auto close = sql("UPDATE gaps SET ended_at_us=max(started_at_us,?1) "
+                             "WHERE kind=2 AND ended_at_us IS NULL");
+            close.bind(1, g_get_real_time());
+            close.run();
+        });
+    }
+
+    void note_pause(bool paused, std::int64_t at) {
+        transaction([&] {
+            if (paused) {
+                auto open = sql("SELECT 1 FROM gaps WHERE kind=1 AND ended_at_us IS NULL");
+                if (!open.row()) {
+                    add_gap(Gap::PAUSE, at, std::nullopt, {});
+                }
+            } else {
+                auto close = sql("UPDATE gaps SET ended_at_us=max(started_at_us,?1) "
+                                 "WHERE kind=1 AND ended_at_us IS NULL");
+                close.bind(1, at);
+                close.run();
+            }
+        });
+    }
+
+    core::Result<fs::FileStamp> restore(VersionId id, fs::Confirmation confirmation,
+                                        const std::function<void(Version)> &added) {
+        if (confirmation != fs::Confirmation::CONFIRMED) {
+            return core::make_error(ErrorCode::NOT_CONFIRMED,
+                                    "History restore requires confirmation");
+        }
+        const auto source = version_source(id);
+        const auto safe = core::check_protected(source.path, core::PathOp::WRITE);
+        if (!safe) {
+            return safe.error();
+        }
+        // PRE_RESTORE can prune the selected version, so keep the blob linked through install.
+        const TempFile pinned(tmp_ + "/restore-XXXXXX");
+        pin_blob(source.blob, pinned);
+        auto saved = capture(source.path, Origin::PRE_RESTORE, {}, false, std::nullopt);
+        if (!saved.stamp) {
+            return core::make_error(ErrorCode::CONFLICT, "File changed during history capture");
+        }
+        if (saved.version) {
+            added(std::move(*saved.version));
+        }
+        return fs::install_file(source.path, pinned.path, saved.stamp, source.mode);
+    }
+
+    core::Result<fs::FileStamp> recover_file(VersionId id) {
+        const auto source = version_source(id);
+        const TempFile pinned(tmp_ + "/recover-XXXXXX");
+        pin_blob(source.blob, pinned);
+        fs::FileStamp stamp;
+        bool installed = false;
+        transaction([&] {
+            clear_deleted(source.path);
+            // A retried COMMIT must keep the file from the first successful install.
+            if (!installed) {
+                const auto result =
+                    fs::install_file(source.path, pinned.path, std::nullopt, source.mode);
+                if (!result) {
+                    throw result.error();
+                }
+                stamp = result.value();
+                installed = true;
+            }
+        });
+        return stamp;
     }
 
     FileHistory load(const std::string &path, bool latest_only = false) {
@@ -508,25 +576,49 @@ class Store::Impl {
         return histories;
     }
 
-    std::string content(VersionId id) {
-        auto statement = sql("SELECT sha256 FROM versions WHERE id=?1");
+    struct VersionSource {
+        std::string path;
+        std::string blob;
+        std::uint32_t mode;
+    };
+
+    VersionSource version_source(VersionId id) {
+        auto statement = sql("SELECT path,sha256,mode FROM versions WHERE id=?1");
         statement.bind(1, id);
         if (!statement.row()) {
             throw core::make_error(ErrorCode::NOT_FOUND, "History version not found");
         }
-        const auto digest = statement.bytes(0);
+        const auto digest = statement.bytes(1);
         if (digest.size() != 32) {
             throw core::make_error(ErrorCode::IO, "Invalid history blob digest");
         }
-        const auto path = blob_path(hex_digest(digest));
-        const UniqueFd shard(::open(disk::path(path).parent_path().c_str(),
-                                    O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC));
+        return {statement.bytes(0), hex_digest(digest),
+                static_cast<std::uint32_t>(statement.integer(2))};
+    }
+
+    UniqueFd open_shard(const std::string &hex) const {
+        const auto path = blobs_ + "/" + hex.substr(0, 2);
+        UniqueFd shard(::open(path.c_str(), O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC));
         if (!shard) {
             file_error("open blob directory", path);
         }
-        const auto name = disk::path(path).filename().string();
+        return shard;
+    }
+
+    void pin_blob(const std::string &hex, const TempFile &pinned) const {
+        const auto shard = open_shard(hex);
+        unlink_file(pinned.path);
+        if (linkat(shard.get(), hex.c_str(), AT_FDCWD, pinned.path.c_str(), 0) != 0) {
+            file_error("pin history blob", pinned.path);
+        }
+    }
+
+    std::string content(VersionId id) {
+        const auto hex = version_source(id).blob;
+        const auto path = blob_path(hex);
+        const auto shard = open_shard(hex);
         const UniqueFd fd(
-            openat(shard.get(), name.c_str(), O_RDONLY | O_NOFOLLOW | O_CLOEXEC | O_NONBLOCK));
+            openat(shard.get(), hex.c_str(), O_RDONLY | O_NOFOLLOW | O_CLOEXEC | O_NONBLOCK));
         if (!fd) {
             file_error("open blob", path);
         }
@@ -744,12 +836,11 @@ class Store::Impl {
             mark_deleted(event.old_path, event.is_dir, event.observed_at_us);
             break;
         case EventKind::CREATE:
-        case EventKind::CLOSE_WRITE: {
-            auto clear = sql("UPDATE files SET deleted_at_us=NULL WHERE path=?1");
-            clear.bind(1, event.path);
-            clear.run();
+        case EventKind::CLOSE_WRITE:
+            if (!event.is_dir) {
+                clear_deleted(event.path);
+            }
             break;
-        }
         case EventKind::OVERFLOW:
             add_gap(Gap::OVERFLOW, event.observed_at_us, std::nullopt, event.path);
             break;
@@ -764,6 +855,13 @@ class Store::Impl {
         default:
             break;
         }
+    }
+
+    void clear_deleted(const std::string &path) {
+        auto clear =
+            sql("UPDATE files SET deleted_at_us=NULL WHERE path=?1 AND deleted_at_us IS NOT NULL");
+        clear.bind(1, path);
+        clear.run();
     }
 
     void mark_deleted(const std::string &path, bool directory, std::int64_t now) {
@@ -808,12 +906,15 @@ class Store::Impl {
         excess.run();
     }
 
-    std::optional<Version> capture_once(const std::string &path, Origin origin,
-                                        const std::function<void()> &after_copy, bool &changed) {
+    Capture capture_once(const std::string &path, Origin origin,
+                         const std::function<void()> &after_copy,
+                         std::optional<std::uint64_t> baseline_bytes) {
         const UniqueFd source(::open(path.c_str(), O_RDONLY | O_NOFOLLOW | O_CLOEXEC | O_NONBLOCK));
         if (!source) {
-            if (errno == ENOENT || errno == ENOTDIR || errno == ELOOP || errno == EACCES) {
-                return std::nullopt;
+            if (origin != Origin::PRE_RESTORE &&
+                (errno == ENOENT || errno == ENOTDIR || errno == ELOOP || errno == EACCES)) {
+                g_debug("Skipping unavailable history capture source");
+                return {};
             }
             file_error("open capture source", path);
         }
@@ -821,9 +922,24 @@ class Store::Impl {
         if (fstat(source.get(), &before) != 0) {
             file_error("fstat capture source", path);
         }
-        const auto limit = std::min(options_.limits.max_file_bytes, max_content_bytes);
-        if (!S_ISREG(before.st_mode) || static_cast<std::uint64_t>(before.st_size) > limit) {
-            return std::nullopt;
+        auto limit = std::min(options_.limits.max_file_bytes, max_content_bytes);
+        if (baseline_bytes) {
+            limit = std::min({limit, options_.limits.baseline_max_file_bytes, *baseline_bytes});
+        }
+        if (!S_ISREG(before.st_mode)) {
+            if (origin == Origin::PRE_RESTORE) {
+                throw core::make_error(ErrorCode::NOT_SUPPORTED, "Restore requires a regular file");
+            }
+            g_debug("Skipping non-regular history capture source");
+            return {};
+        }
+        if (static_cast<std::uint64_t>(before.st_size) > limit) {
+            if (origin == Origin::PRE_RESTORE) {
+                throw core::make_error(ErrorCode::TOO_LARGE,
+                                       "Restore target exceeds capture limit");
+            }
+            g_debug("Skipping history capture source above the size limit");
+            return {};
         }
 
         const TempFile temp(tmp_ + "/capture-XXXXXX");
@@ -832,8 +948,7 @@ class Store::Impl {
         std::uint64_t size = 0;
         while (const auto count = read_chunk(source.get(), buffer.data(), buffer.size(), path)) {
             if (__builtin_add_overflow(size, count, &size) || size > limit) {
-                changed = true;
-                return std::nullopt;
+                return {std::nullopt, std::nullopt, true};
             }
             checksum.update(reinterpret_cast<const guchar *>(buffer.data()), count);
             write_chunk(temp, buffer.data(), count);
@@ -850,8 +965,7 @@ class Store::Impl {
             if (errno != ENOENT && errno != ENOTDIR) {
                 file_error("lstat capture source", path);
             }
-            changed = true;
-            return std::nullopt;
+            return {std::nullopt, std::nullopt, true};
         }
         if (before.st_size != after.st_size || before.st_mtim.tv_sec != after.st_mtim.tv_sec ||
             before.st_mtim.tv_nsec != after.st_mtim.tv_nsec ||
@@ -859,9 +973,15 @@ class Store::Impl {
             after.st_ino != named.st_ino || after.st_size != named.st_size ||
             after.st_mtim.tv_sec != named.st_mtim.tv_sec ||
             after.st_mtim.tv_nsec != named.st_mtim.tv_nsec) {
-            changed = true;
-            return std::nullopt;
+            return {std::nullopt, std::nullopt, true};
         }
+        std::int64_t mtime = 0;
+        if (__builtin_mul_overflow(before.st_mtim.tv_sec, ns_per_second, &mtime) ||
+            __builtin_add_overflow(mtime, before.st_mtim.tv_nsec, &mtime)) {
+            throw core::make_error(ErrorCode::IO, "Capture timestamp is outside history range");
+        }
+        const fs::FileStamp stamp{static_cast<std::uint64_t>(before.st_dev),
+                                  static_cast<std::uint64_t>(before.st_ino), size, mtime};
         std::string digest(32, '\0');
         gsize digest_size = digest.size();
         checksum.get_digest(reinterpret_cast<guint8 *>(digest.data()), &digest_size);
@@ -870,16 +990,12 @@ class Store::Impl {
                 sql("SELECT sha256 FROM versions WHERE path=?1 ORDER BY number DESC LIMIT 1");
             latest.bind(1, path);
             if (latest.row() && latest.bytes(0) == digest) {
-                return std::nullopt;
+                clear_deleted(path);
+                return {std::nullopt, stamp};
             }
         }
         const auto hex = hex_digest(digest);
         install_blob(temp, hex);
-        std::int64_t mtime = 0;
-        if (__builtin_mul_overflow(before.st_mtim.tv_sec, ns_per_second, &mtime) ||
-            __builtin_add_overflow(mtime, before.st_mtim.tv_nsec, &mtime)) {
-            throw core::make_error(ErrorCode::IO, "Capture timestamp is outside history range");
-        }
         Version version{0,      path, 0,     g_get_real_time(),
                         origin, size, mtime, static_cast<std::uint32_t>(before.st_mode),
                         hex};
@@ -897,7 +1013,7 @@ class Store::Impl {
             _exit(77);
         }
         unlink_blobs(removed);
-        return version;
+        return {std::move(version), stamp};
     }
 
     void install_blob(const TempFile &temp, const std::string &hex) {
@@ -1120,10 +1236,30 @@ core::Status Store::record(const std::vector<core::EventPtr> &events,
         return {};
     });
 }
-core::Result<std::optional<Version>> Store::capture(const std::string &path, Origin origin,
-                                                    const std::function<void()> &after_copy) {
-    return impl_->result<std::optional<Version>>(
-        [&] { return impl_->capture(path, origin, after_copy); });
+core::Result<Capture> Store::capture(const std::string &path, Origin origin,
+                                     const std::function<void()> &after_copy, bool defer_retry,
+                                     std::optional<std::uint64_t> baseline_bytes) {
+    return impl_->result<Capture>(
+        [&] { return impl_->capture(path, origin, after_copy, defer_retry, baseline_bytes); });
+}
+core::Status Store::start_scan() {
+    return impl_->result<void>([&]() -> core::Status {
+        impl_->start_scan();
+        return {};
+    });
+}
+core::Status Store::note_pause(bool paused, std::int64_t at) {
+    return impl_->result<void>([&]() -> core::Status {
+        impl_->note_pause(paused, at);
+        return {};
+    });
+}
+core::Result<fs::FileStamp> Store::restore(VersionId id, fs::Confirmation confirmation,
+                                           const std::function<void(Version)> &added) {
+    return impl_->result<fs::FileStamp>([&] { return impl_->restore(id, confirmation, added); });
+}
+core::Result<fs::FileStamp> Store::recover_file(VersionId id) {
+    return impl_->result<fs::FileStamp>([&] { return impl_->recover_file(id); });
 }
 core::Result<FileHistory> Store::load(const std::string &path) {
     return impl_->result<FileHistory>([&] { return impl_->load(path); });

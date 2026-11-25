@@ -12,10 +12,20 @@ enum class FaultPoint : std::uint8_t;
 
 namespace internal {
 
+inline constexpr std::uint64_t max_content_bytes = 8ULL * 1024 * 1024;
+
 struct Backlog {
     std::int64_t first;
     std::int64_t last;
 };
+
+struct Capture {
+    std::optional<Version> version;
+    std::optional<fs::FileStamp> stamp;
+    bool changed = false;
+};
+
+bool excluded_tree(const std::string &path, const std::string &data_dir);
 
 class Store {
   public:
@@ -26,8 +36,15 @@ class Store {
     core::Status recover(const std::function<void()> &between_steps);
     core::Status record(const std::vector<core::EventPtr> &events,
                         const std::vector<Backlog> &drops);
-    core::Result<std::optional<Version>> capture(const std::string &path, Origin origin,
-                                                 const std::function<void()> &after_copy);
+    core::Result<Capture> capture(const std::string &path, Origin origin,
+                                  const std::function<void()> &after_copy = {},
+                                  bool defer_retry = false,
+                                  std::optional<std::uint64_t> baseline_bytes = std::nullopt);
+    core::Status start_scan();
+    core::Status note_pause(bool paused, std::int64_t at);
+    core::Result<fs::FileStamp> restore(VersionId id, fs::Confirmation confirmation,
+                                        const std::function<void(Version)> &added);
+    core::Result<fs::FileStamp> recover_file(VersionId id);
     core::Result<FileHistory> load(const std::string &path);
     core::Result<std::vector<FileHistory>> deleted(const std::string &dir);
     core::Result<std::string> content(VersionId id);
