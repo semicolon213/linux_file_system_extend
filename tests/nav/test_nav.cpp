@@ -14,6 +14,7 @@
 #include <giomm/init.h>
 #include <glib/gstdio.h>
 #include <glibmm/fileutils.h>
+#include <glibmm/main.h>
 #include <glibmm/miscutils.h>
 #include <sigc++/sigc++.h>
 
@@ -132,6 +133,33 @@ void test_list_dir() {
     g_assert_cmpuint(directories.value().size(), ==, 2);
     g_assert_nonnull(find_entry(directories.value(), "dir"));
     g_assert_nonnull(find_entry(directories.value(), "dir-link"));
+}
+
+void test_list_dir_thread_default_context() {
+    filescope::test::TestEnvironment environment;
+    const auto context = Glib::MainContext::create();
+    const auto loop = Glib::MainLoop::create(context);
+    const auto timeout = Glib::TimeoutSource::create(5000);
+    timeout->connect([&loop] {
+        loop->quit();
+        return false;
+    });
+    timeout->attach(context);
+    bool delivered = false;
+    context->push_thread_default();
+    filescope::nav::list_dir_async(
+        environment.root(), false, false, {},
+        [&delivered, &loop, &context](const Result<std::vector<Entry>> &result) {
+            g_assert_true(g_main_context_is_owner(context->gobj()));
+            g_assert_true(result.ok());
+            delivered = true;
+            loop->quit();
+        });
+    context->pop_thread_default();
+    g_assert_false(delivered);
+    loop->run();
+    timeout->destroy();
+    g_assert_true(delivered);
 }
 
 void test_list_dir_failures() {
@@ -317,6 +345,7 @@ int main(int argc, char **argv) {
     Gio::init();
     g_test_init(&argc, &argv, nullptr);
     g_test_add_func("/nav/list-dir", test_list_dir);
+    g_test_add_func("/nav/list-dir-thread-default", test_list_dir_thread_default_context);
     g_test_add_func("/nav/list-dir-failures", test_list_dir_failures);
     g_test_add_func("/nav/disconnected-slot", test_disconnected_slot);
     g_test_add_func("/nav/list-dir-stress", test_list_dir_stress);
