@@ -365,15 +365,18 @@ void test_restore_and_recover() {
 void test_shutdown() {
     Fixture fixture;
     const auto pending = fixture.root + "/pending";
+    const std::string scan_content = "scan";
     his::Limits limits;
     limits.capture_delay_ms = 10000;
+    // Keep pending eligible for AUTO but too large for the baseline scan.
+    limits.baseline_max_file_bytes = scan_content.size();
     fixture.start(limits);
     write_file(pending, "waiting");
     fixture.wait_event(EventKind::CLOSE_WRITE, pending);
     const auto scan = fixture.environment.root() + "/scan";
     disk::create_directory(scan);
     for (int i = 0; i < 2000; ++i) {
-        write_file(scan + "/" + std::to_string(i), "scan");
+        write_file(scan + "/" + std::to_string(i), scan_content);
     }
     fixture.history->scan_root(scan, true);
     g_assert_true(test::wait_until([&] { return !fixture.added.empty(); }, 2000));
