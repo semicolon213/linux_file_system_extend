@@ -59,7 +59,7 @@ wsl.exe -d Ubuntu-24.04 --cd <저장소 경로> -- make <target>
 | 파일 CRUD | docs/SRS.md, docs/DESIGN.md(인터페이스 §3, 메모리, 상태 §2), docs/ENGINEERING.md(오류, 보안), ADR-0005 |
 | inotify/감시 | docs/ARCHITECTURE.md, docs/DESIGN.md(이벤트, 스레드, 상태 §1, 인터페이스 §4), docs/ENGINEERING.md, ADR-0003, ADR-0006 |
 | 작업 큐 | docs/DESIGN.md(인터페이스 §2, 상태 §2, 스레드), docs/ENGINEERING.md(오류) |
-| SQLite/이력 | docs/DESIGN.md(데이터 모델, DB 스키마, 이벤트 §1), docs/ENGINEERING.md |
+| SQLite/이력 | docs/DESIGN.md(인터페이스 §8·§9, 이벤트 §10, 데이터 모델, DB 스키마), docs/ENGINEERING.md(보안 §6), ADR-0009 |
 | UI | 루트 DESIGN.md, docs/design/prototype/, docs/ENGINEERING.md(접근성), docs/DESIGN.md(인터페이스 §6·§7) |
 | QA | docs/SRS.md, docs/TESTING.md, harness/EVALS.md |
 | 작업 분배·통합 | harness/WORKFLOW.md, harness/TASKS.md, harness/PROGRESS.md, docs/ARCHITECTURE.md |

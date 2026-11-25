@@ -15,7 +15,7 @@
 - 커밋 메시지에 `Co-Authored-By` 줄을 넣지 않는다.
 - C 구현 참고: 이전 C 코드는 커밋 `b0da73b`에 있다(`git show b0da73b:src/job/fs_job.c` 등). 동작 참고용이며 계약은 docs/DESIGN.md C++ 판이 정본이다. 옛 C 이름 대응은 DESIGN 인터페이스 §0 표.
 
-## 상태 요약 (2026-11-24)
+## 상태 요약 (2026-11-25)
 
 | 작업 | 상태 | 선행 |
 |---|---|---|
@@ -28,10 +28,24 @@
 | R1-T05 nav C++ 포팅 | APPROVED (2eab368, R1 QA PASS 8c469a9) | R1-T01 |
 | R1-T06 ui | APPROVED (a148ce3, R1 QA PASS 8c469a9) | R1-T03, R1-T04, R1-T05, R1-T07 |
 | R1-T07 dash | APPROVED (08424c7, R1 QA PASS 8c469a9) | R1-T01 |
+| R2-T00 R1 QA Low 정리 (N1~N3) | READY | R1 APPROVED |
+| R2-T01 R2 빌드 기반 | READY | R1 APPROVED |
+| R2-T02 fs R2 보조 API | BACKLOG | R2 계약 승인, R2-T00 |
+| R2-T03 diff | BACKLOG | R2 계약 승인, R2-T01 |
+| R2-T04 his 저장소 | BACKLOG | ADR-0009 승인, R2-T01 |
+| R2-T05 his 자동 버전·복원 | BACKLOG | R2-T02, R2-T04 |
+| R2-T06 mon 일시 정지 | BACKLOG | R2 계약 승인 |
+| R2-T07 trash | BACKLOG | R2 계약 승인, R2-T01, R2-T02 |
+| R2-T08 search | BACKLOG | R2 계약 승인, R2-T01 |
+| R2-T09 ui 변경 내용 패널 | BACKLOG | R2-T00, R2-T03, R2-T05 |
+| R2-T10 ui 트레이·요약 창·일시 정지 | BACKLOG | R2-T06, R2-T09 |
+| R2-T11 ui 검색·휴지통·미리보기 | BACKLOG | R2-T07, R2-T08, R2-T10, U-10·U-11 결정 |
 
 의존 순서: R0-002 → R1-T01 → {R1-T02, R1-T04, R1-T05, R1-T07 병렬} → R1-T03(T02 필요) → R1-T06. 독립 QA는 R1 전체를 묶어 한 번 한다(R0-002 포함, PROGRESS 미결 사항 E-6).
 
-파일 소유권: 루트 빌드 파일·scripts·tests/support·tests/integration/CMakeLists.txt·app 진입점은 R0-002, `src/<m>/**`·`tests/<m>/**`는 해당 모듈 작업, `tests/integration/test_<m>_*.cpp`는 해당 모듈 작업이 갖는다. 겹치지 않는다. 다른 작업의 파일을 바꿔야 하면 Coordinator에 보고한다.
+R2 의존 순서: {R2-T00, R2-T01 병렬} → {R2-T02(T00 뒤), R2-T03, R2-T04, R2-T06, R2-T08 병렬} → {R2-T05(T02·T04 뒤), R2-T07(T02 뒤)} → R2-T09 → R2-T10 → R2-T11. ui 작업 셋은 같은 ui 파일을 쓰므로 순서대로 한다. 독립 QA는 R2 전체를 묶어 한 번 한다. 새 시스템 패키지 libsqlite3-dev 3.45.1, libayatana-appindicator3-dev 0.5.93은 WSL Ubuntu-24.04에 설치되어 있다(2026-11-25 확인).
+
+파일 소유권: 루트 빌드 파일·scripts·tests/support·tests/integration/CMakeLists.txt·app 진입점은 R0-002, `src/<m>/**`·`tests/<m>/**`는 해당 모듈 작업, `tests/integration/test_<m>_*.cpp`는 해당 모듈 작업이 갖는다. 겹치지 않는다. 다른 작업의 파일을 바꿔야 하면 Coordinator에 보고한다. R2: 루트 빌드 파일·check-architecture.sh·tests/integration/CMakeLists.txt는 R2-T01, `src/fs/**`는 R2-T00 → R2-T02, `src/his/**`는 R2-T04 → R2-T05, `src/ui/**`·`src/main.cpp`·`tests/ui/**`·`scripts/e2e-*.sh`는 R2-T09 → R2-T10 → R2-T11 순서로 넘겨받는다(R2-T00은 ui.cpp 정렬 함수와 interaction.py 정렬 묶음만). 같은 파일을 두 작업이 동시에 갖지 않는다.
 
 ## R0-001 빌드·테스트 하네스 (C, 대체됨)
 
@@ -260,4 +274,292 @@
   - 지표: 최근 60초 경계(59.9초 포함, 60.1초 제외) 이벤트 수, 지연 표본 1..1024개 P95가 정렬 기준 값과 같음, 표본 없으면 nullopt.
 - 필수 테스트 / 게이트: G1, G2, G4, G5
 - 예상 위험 / 차단 조건: 분 경계는 UTC 60초 기준이라 30분 단위 시간대 오프셋 지역에서도 화면 분 표시와 맞는지 QA 확인.
+- 공통: WSL Ubuntu-24.04에서 빌드·테스트, Codex 문서 수정 금지, 커밋에 Co-Authored-By 금지.
+
+## R2 공통 (2026-11-25)
+
+- 범위는 사용자 결정(PROGRESS 결정 기록 "R2 범위")과 docs/PRD.md §3. 계약은 DESIGN 인터페이스 §3·§4·§7 "R2 추가", §8~§11, 이벤트 §10, 스레드·상태·메모리 R2 항목, DB 스키마, ADR-0009(제안). R2 계약은 제안 상태이며 Coordinator·사용자 승인 뒤 계약이 필요한 작업을 READY로 올린다.
+- 모든 파일 테스트는 임시 디렉터리 안, HOME·XDG_*는 임시 경로. his 테스트는 `Options::data_dir`도 임시 경로(TESTING §8).
+- ui 작업의 시각 기준은 루트 DESIGN.md와 docs/design/prototype/(main-window.html, tray.html)이다. 색·간격·글꼴·레이아웃·아이콘을 새로 정하지 않는다. 시안 없는 화면은 PROGRESS 미결 U-10을 따르고 코드에 `// design-pending: U-10`을 단다.
+- 게이트 표기: G1 build, G2 test, G3 integration, G4 format-check·lint·architecture, G5 asan·ubsan, G6 tsan, G7 e2e, ui-interaction(`make ui-interaction`), G8 stress·benchmark. 병합 전 `make verify`.
+
+## R2-T00 R1 QA Low 정리 (N1~N3)
+
+- Task ID / 요구사항 ID: R2-T00 / FS-009·FS-018(N1), FS-010(N2), NAV-001·UI-005 목록 정렬(N3). 출처 docs/qa/r1-qa-report.md "새 발견 사항"
+- 상태: READY
+- 목표:
+  - N1: 디렉터리 대상에 copy + OVERWRITE(CONFIRMED)일 때 대상을 먼저 지우지 않는다. move(F5)와 같은 staging 방식으로 대상을 같은 디렉터리의 `.filescope-*` 임시 디렉터리로 옮겨 두고 복사한다. 성공하면 백업을 지우고, 실패·취소면 부분 복사본을 지우고 백업을 되돌린다.
+  - N2: EXDEV 이동 폴백에서 복사한 항목 목록(상대 경로, 종류, dev·ino·size·mtime_ns)을 남기고, 원본 삭제는 목록에 있고 stamp가 같은 항목만 한다. 목록에 없거나 바뀐 항목이 남은 디렉터리는 지우지 않고 그 항목을 CONFLICT로 기록한다.
+  - N3: 파일 목록 정렬을 폴더 먼저 + 표시 이름의 `Glib::ustring::collate_key_for_filename` 비교로 바꾼다(file-2가 file-10 앞).
+- 제외 범위: fs 공개 선언 변경(R2-T02), 정렬 열 선택·다중 정렬(UI-010, P1), 그 밖의 ui 동작.
+- 기준 브랜치 / SHA: semicolon213/design-and-r0 @ 957dede
+- 선행 작업: R1 APPROVED (완료)
+- 허용 파일: `src/fs/**`(fs.hpp 공개 선언 제외, `fs_testing.hpp` 입구 추가 허용), `tests/fs/**`, `tests/integration/test_fs_*.cpp`, `src/ui/ui.cpp`(목록 정렬 비교 부분만), `tests/ui/interaction.py`(정렬 확인 묶음 추가만)
+- 변경 금지: 루트 CMake·Makefile·scripts, `tests/support/**`, 다른 모듈, docs, harness, 디자인 파일
+- 참조 계약: DESIGN 인터페이스 §3, ADR-0005, ENGINEERING 오류 §4(원본 보존)·보안 §1, docs/qa/r1-qa-report.md N1~N3
+- 수용 조건 (Given/When/Then):
+  - N1: Given 대상 디렉터리 d(파일 2개)와 같은 이름 원본 디렉터리, 복사 두 번째 항목에서 쓰기 실패를 주입(`fs_testing.hpp`), When copy(OVERWRITE, CONFIRMED), Then FAILED이고 대상 d의 내용·모드가 복사 전과 같으며 `.filescope-*` 잔여 없음. 실패 주입 없이는 d가 원본 내용으로 바뀌고 백업 잔여 없음. 큰 파일 복사 중 cancel(E06)도 d 복원.
+  - N2: Given 원본 a/{x, sub/y}, EXDEV 폴백 경로(다른 장치 tmpfs가 없으면 `fs_testing.hpp`의 EXDEV 강제 입구), 복사 완료 직후·원본 삭제 전에 a/sub/z를 만드는 훅, When move, Then 대상에 x, y가 있고 원본의 x, y는 지워지며 a/sub/z와 그 부모는 남고 항목 결과에 CONFLICT, 상태 FAILED. 훅이 없으면 원본 전체 삭제(기존 테스트 유지).
+  - N3: Given 이름 file-1, file-2, file-10, File-3과 폴더 b, A, When 목록 표시(LC_ALL=C.UTF-8), Then A, b, file-1, file-2, File-3, file-10 순서. 비 UTF-8 이름이 섞여도 크래시·GTK critical 없음.
+  - 기존 fs 테스트와 ui-interaction 묶음 전부 통과.
+- 필수 테스트 / 게이트: G1~G7, ui-interaction, `make verify`
+- 예상 위험 / 차단 조건: staging 디렉터리는 대상과 같은 파일 시스템이어야 rename된다. collate key는 로캘을 따르므로 기대값은 C.UTF-8 기준으로 정한다. 실제 EXDEV 재현이 안 되면 강제 입구 결과와 함께 NOT_RUN 사유를 기록한다.
+- 공통: WSL Ubuntu-24.04에서 빌드·테스트, Codex 문서 수정 금지, 커밋에 Co-Authored-By 금지.
+
+## R2-T01 R2 빌드 기반
+
+- Task ID / 요구사항 ID: R2-T01 / R2 모듈 빌드·의존 검사 (ARCHITECTURE §1·§3, ADR-0009)
+- 상태: READY
+- 목표: 루트 CMake에 `pkg_check_modules(SQLITE3 REQUIRED IMPORTED_TARGET sqlite3)`, `pkg_check_modules(AYATANA REQUIRED IMPORTED_TARGET ayatana-appindicator3-0.1)`(SYSTEM include)를 더하고, src·tests 모듈 목록을 `core job fs mon nav dash diff his search trash ui`로 늘린다(디렉터리가 있을 때만 add_subdirectory 유지). check-architecture.sh에 ARCHITECTURE §1 R2 행(diff, his, search, trash의 금지 include)과 "`libayatana-appindicator/`는 src/ui만" 규칙을 더한다. `tests/integration/CMakeLists.txt`는 `test_his_*`가 `filescope_mon`도 링크하게 한다(his 통합 테스트가 실제 Watcher를 씀).
+- 제외 범위: 모듈 구현, 각 모듈 CMakeLists.txt(모듈 작업 소유), ui 링크(`src/ui/CMakeLists.txt`는 R2-T09~T11).
+- 기준 브랜치 / SHA: semicolon213/design-and-r0 @ 957dede
+- 선행 작업: R1 APPROVED (완료). 패키지 설치 확인됨(libsqlite3-dev 3.45.1, libayatana-appindicator3-dev 0.5.93)
+- 허용 파일: `CMakeLists.txt`(루트), `scripts/check-architecture.sh`, `tests/test_architecture.cpp`, `tests/integration/CMakeLists.txt`, `Makefile`(필요할 때만, 대상 이름·의미 유지)
+- 변경 금지: `src/**`, 모듈 테스트, `tests/support/**`, docs, harness, 디자인 파일
+- 참조 계약: ARCHITECTURE §1~§4, ENGINEERING 빌드·의존성, ADR-0004, ADR-0009
+- 수용 조건 (Given/When/Then):
+  - Given 현재 트리, When `make build test architecture`, Then 0이고 기존 테스트 전부 통과(새 모듈 디렉터리가 없어도 됨).
+  - Given 임시 사본에서 src/diff가 `gtkmm.h`, src/search가 `his/his.hpp`, src/trash가 `mon/mon.hpp`, src/fs가 `sqlite3.h`, src/his가 `libayatana-appindicator/app-indicator.h`를 include, When check-architecture.sh, Then 각각 비0(test_architecture.cpp 사례로 추가). src/his의 `sqlite3.h`, src/ui의 ayatana include는 통과.
+  - pkg-config에 sqlite3나 ayatana가 없으면 configure가 패키지 이름을 담은 메시지로 실패한다(확인 방법은 인수인계에 적음, 실제 제거는 하지 않음).
+- 필수 테스트 / 게이트: G1, G2, G4, G5, `make verify`
+- 예상 위험 / 차단 조건: ayatana 헤더가 `-Wpedantic` 경고를 내면 SYSTEM include로 막는다. Ubuntu 22.04의 pkg-config 이름이 다를 수 있다(24.04만 확인).
+- 공통: WSL Ubuntu-24.04에서 빌드·테스트, Codex 문서 수정 금지, 커밋에 Co-Authored-By 금지.
+
+## R2-T02 fs R2 보조 API
+
+- Task ID / 요구사항 ID: R2-T02 / HIS-011·HIS-012·TRASH-005·TRASH-006의 파일 쓰기 기반 (DESIGN 인터페이스 §3 "R2 추가")
+- 상태: BACKLOG (R2 계약 승인과 R2-T00 병합 후 READY. 같은 fs 파일)
+- 목표: `fs::install_file`, `fs::remove_tree`를 계약대로 더한다. remove_tree는 기존 영구 삭제 코드를 쓴다.
+- 제외 범위: 기존 함수 동작 변경, his·trash 구현.
+- 기준 브랜치 / SHA: R2-T00 통합 커밋
+- 선행 작업: R2-T00
+- 허용 파일: `src/fs/**`, `tests/fs/**`, `tests/integration/test_fs_*.cpp`
+- 변경 금지: 루트 빌드 파일·scripts, `tests/support/**`, 다른 모듈, docs, harness, 디자인 파일
+- 참조 계약: DESIGN 인터페이스 §3(R2 추가 포함), ADR-0005, ENGINEERING 보안 §1·§2·§4, 오류 §4
+- 수용 조건 (Given/When/Then):
+  - Given target(내용 A, 모드 0640)과 source(내용 B)와 읽어 둔 target stamp, When install_file(expected=stamp), Then target 내용 B, 모드 0640, inode 바뀜(rename 교체), `.filescope-*` 잔여 없음, 반환 stamp가 lstat과 같음. mode=0600이면 0600.
+  - Given 읽은 뒤 외부에서 target 수정, Then CONFLICT, target 불변. expected가 있는데 target 없음 → NOT_FOUND.
+  - Given expected 없음, Then target이 없으면 생성, 있으면 EXISTS(내용 불변), 부모 없음 → NOT_FOUND.
+  - source가 디렉터리·FIFO·심볼릭 링크 → NOT_SUPPORTED. target이 "/usr/x" → PROTECTED_PATH, 쓰기 시도 없음. 이미 취소된 cancellable → CANCELLED, 임시 파일 없음. 쓰기 실패 주입 → 오류, target 불변, 임시 파일 없음.
+  - remove_tree: NONE → NOT_CONFIRMED, 트리 유지. CONFIRMED → 하위·링크까지 삭제, 링크 대상은 남음. 하위 하나가 권한 000 디렉터리 안이면 PERMISSION_DENIED를 돌려주고 나머지는 삭제(root면 skip). "/"·HOME → PROTECTED_PATH.
+- 필수 테스트 / 게이트: G1~G6
+- 예상 위험 / 차단 조건: install_file은 worker·his 스레드에서 불리므로 전역 상태를 쓰지 않는다.
+- 공통: WSL Ubuntu-24.04에서 빌드·테스트, Codex 문서 수정 금지, 커밋에 Co-Authored-By 금지.
+
+## R2-T03 diff
+
+- Task ID / 요구사항 ID: R2-T03 / HIS-007, HIS-008(텍스트 줄 Diff, md 포함), HIS-009(이미지 비교 데이터)
+- 상태: BACKLOG (R2 계약 승인과 R2-T01 병합 후 READY)
+- 목표: `src/diff`를 DESIGN 인터페이스 §9대로 구현한다(classify, Myers 줄 Diff, 격자 이미지 비교). GTK·파일 I/O·스레드 없음.
+- 제외 범위: docx·odt 내부 비교(R3), 단어 단위 Diff, 이미지 디코드(ui), 화면.
+- 기준 브랜치 / SHA: R2-T01 통합 커밋
+- 선행 작업: R2-T01
+- 허용 파일: `src/diff/**`, `tests/diff/**`(골든 파일 `tests/diff/golden/**` 포함)
+- 변경 금지: 루트 빌드 파일·scripts, `tests/support/**`, 다른 모듈, docs, harness, 디자인 파일
+- 참조 계약: DESIGN 인터페이스 §9, 메모리 §4(R2 상한), TESTING §8(골든 테스트)
+- 수용 조건 (Given/When/Then):
+  - classify: PNG·JPEG·GIF·WebP·BMP 시그니처 → IMAGE, "hello\n"·md 문서·빈 입력 → TEXT, NUL 포함·잘못된 UTF-8 → BINARY, zip(`PK\x03\x04`, docx) → BINARY.
+  - 골든: TESTING §8 사례마다 diff_lines 결과를 unified 형식으로 찍은 것이 사람이 쓴 expected와 같다.
+  - 성질: 무작위 작은 입력 500쌍에서 결과를 before에 적용하면 after, added+deleted가 LCS 기반 최소값과 같다.
+  - 끝 줄바꿈 없음 플래그, CRLF의 '\r' 보존, 줄 번호(old/new) 정확.
+  - context 3: 사이가 6줄 이하인 변경 둘은 덩어리 1개, 7줄 이상이면 2개.
+  - 한쪽 50001줄 → TOO_LARGE. 서로 다른 1만 줄 두 개(D > 5000) → too_complex, added/deleted는 각 쪽 전체 줄 수, 소요 시간 기록(1초 목표).
+  - compare_images: 64×64 같음 → 영역 0. (20,20) 픽셀 한 채널 +30 → 영역 {16,16,16,16} 하나, +24 이하 → 0. 이웃한 두 칸 → 영역 1개. 떨어진 칸 10개, max_regions 8 → regions 8개(넓은 순), region_count 10. 64×64 → 64×80 → same_size=false, 아래 16줄 영역 포함. pixels null·stride 부족 → FAILED.
+- 필수 테스트 / 게이트: G1, G2, G4, G5
+- 예상 위험 / 차단 조건: Myers 구현의 메모리(편집 거리 한도로 제한). 골든 expected를 구현 출력으로 만들지 않는다(QA 확인 항목).
+- 공통: WSL Ubuntu-24.04에서 빌드·테스트, Codex 문서 수정 금지, 커밋에 Co-Authored-By 금지.
+
+## R2-T04 his 저장소
+
+- Task ID / 요구사항 ID: R2-T04 / HIS-001(SQLite 이력), NFR-014(강제 종료 후 integrity_check), HIS-005·HIS-007·HIS-012의 저장·조회 기반
+- 상태: BACKLOG (ADR-0009 승인과 R2-T01 병합 후 READY)
+- 목표: `his::History`의 저장 부분을 DESIGN 인터페이스 §8과 DB 스키마 §1~§7대로 구현한다: open(데이터 디렉터리·권한·PRAGMA·migration·손상 처리), his 스레드·명령 큐·Dispatcher, record_events(events·sessions·gaps 기록), 블롭 저장소와 캡처 루틴(DB §5, 테스트 입구로 호출), 보관 한도 정리, 복구·orphan 정리, load_history_async·list_deleted_async·read_content_async, 삭제 표시, shutdown, `his_testing.hpp`.
+- 제외 범위: 이벤트별 캡처 예약·지연·기준 스냅샷·제외 경로 판단·note_pause·restore·recover(R2-T05), 화면.
+- 기준 브랜치 / SHA: R2-T01 통합 커밋
+- 선행 작업: R2-T01, ADR-0009 승인
+- 허용 파일: `src/his/**`, `tests/his/**`, `tests/integration/test_his_*.cpp`
+- 변경 금지: 루트 빌드 파일·scripts, `tests/support/**`, 다른 모듈, docs, harness, 디자인 파일
+- 참조 계약: DESIGN 인터페이스 §0·§1·§8, 이벤트 §10, 스레드 §1~§5(R2), 상태 §3, 메모리 §4, DB 스키마 전체, ENGINEERING 보안 §6, ADR-0008, ADR-0009
+- 수용 조건 (Given/When/Then):
+  - 열기: Given 없는 data_dir, Then 0700 디렉터리, history.db 0600, user_version 1, DB §3의 테이블·인덱스 존재. 0755로 미리 만든 디렉터리 → 0700으로 고침. user_version 99 DB → NOT_SUPPORTED, 파일 바이트 불변. 무작위 바이트 DB → `history.db.corrupt-*`로 옮기고 새 DB, signal_state(READY, Error) 1회.
+  - HIS-001: Given CREATE·MODIFY·RENAME·OVERFLOW·RESYNC_DONE 이벤트 배치(`core::make_event`, 비 UTF-8 경로 포함), When record_events 후 flush, Then events 행의 필드가 같고(path 바이트 그대로, size_delta 미상은 NULL) gaps OVERFLOW 행이 열렸다 닫힘. data_dir 아래 경로 이벤트는 행 없음. 닫고 다시 열어도 행이 남음.
+  - 캡처: Given 파일 A "1", 테스트 입구로 두 번 캡처 → 버전 1개. A를 "2"로 → 버전 2개(number 1, 2), 블롭 2개. 같은 내용 파일 B 캡처 → 블롭 수 그대로, ref_count 2. read_content가 바이트 그대로. 복사 중 파일을 바꾸는 테스트 훅 → 한 번 재시도 후 버전 없음, tmp/ 비어 있음. 8MiB 초과 → 버전 없음.
+  - 한도 (DB §6): max_versions_per_file=3에서 다른 내용 5번 → 버전 number 3, 4, 5만, 참조 끊긴 블롭 파일 삭제. max_store_bytes를 작게 → 오래된 것부터 지우고 경로별 최신은 남음, 최신만으로 넘으면 DEGRADED(NO_SPACE). max_event_rows 초과 → 오래된 행부터 삭제.
+  - 삭제 표시: 버전 있는 경로의 DELETE → load_history의 deleted_at_us 값, list_deleted_async(부모)에 포함, 이후 CLOSE_WRITE → 해제. 디렉터리 DELETE → 그 아래 전부 표시. "/a/b" 삭제가 "/a/bc"에 번지지 않음.
+  - 복구 (NFR-014, TESTING §8): 자식 프로세스 SIGKILL 20회와 두 장애 지점 `_exit` 뒤 다시 열기 → integrity_check ok, 행 있으면 파일 있음, orphan·tmp 잔여 없음, ref_count 일치, 이전 세션 ended_at_us 채움과 gaps NOT_RUNNING.
+  - orphan·busy·권한: TESTING §8 항목 그대로.
+  - 수명 (E10): 1000개 배치 연속 기록과 조회를 섞다가 shutdown → 반환 후 슬롯·신호 없음, ASan·TSan 오류 없음. 미기록 이벤트 상한 초과 → 배치 버림과 gaps HIS_BACKLOG.
+  - G8: TESTING §8 부하 수치 기록(측정 전 PASS 금지).
+- 필수 테스트 / 게이트: G1~G6, G8
+- 예상 위험 / 차단 조건: TSan 빌드에서 fork 뒤 자식이 스레드를 만들면 문제가 될 수 있다. 강제 종료 테스트는 자식에서 테스트 helper 실행 파일을 exec하는 방식을 우선한다. SQLite는 비계측 라이브러리라 TSan 억제가 필요하면 근거와 함께 보고(프로젝트 코드 억제 금지).
+- 공통: WSL Ubuntu-24.04에서 빌드·테스트, Codex 문서 수정 금지, 커밋에 Co-Authored-By 금지.
+
+## R2-T05 his 자동 버전·복원
+
+- Task ID / 요구사항 ID: R2-T05 / HIS-005(자동 버전), HIS-011(버전 복원), HIS-012(삭제 복구), E09(스냅샷 없는 삭제)
+- 상태: BACKLOG (R2-T02·R2-T04 병합 후 READY)
+- 목표: 이벤트 §10 표의 처리(캡처 예약과 300ms 합치기, synthetic CREATE, 이동 계열), scan_root 기준 스냅샷(한도, 조회와 번갈아 처리), note_pause, `is_excluded`(DB §8), restore_async(PRE_RESTORE 캡처 → `fs::install_file`), recover_async, signal_version_added.
+- 제외 범위: 이름 추적(HIS-015), 다른 위치 복원, 디렉터리 스냅샷·복원(HIS-013/014), 화면.
+- 기준 브랜치 / SHA: R2-T04 통합 커밋(R2-T02 포함)
+- 선행 작업: R2-T02, R2-T04
+- 허용 파일: `src/his/**`, `tests/his/**`, `tests/integration/test_his_*.cpp`
+- 변경 금지: 루트 빌드 파일·scripts, `tests/support/**`, 다른 모듈, docs, harness, 디자인 파일
+- 참조 계약: DESIGN 인터페이스 §3(R2 추가)·§8, 이벤트 §10, DB 스키마 §5~§8, ADR-0009
+- 수용 조건 (Given/When/Then): 통합 테스트는 실제 `mon::Watcher`와 History를 메인 루프에서 ui와 같은 순서로 잇는다(이벤트 §10 표).
+  - HIS-005: Given 감시 루트와 scan_root 완료, notes.md("a\n")의 BASELINE v1, When 외부에서 "b\n"으로 덮어씀, Then 2초 안에 AUTO v2와 signal_version_added 1회. 300ms 안에 10번 쓰기 → 버전 1개(마지막 내용). 같은 내용 다시 쓰기 → 새 버전 없음.
+  - 편집기 저장: 임시 파일에 쓰고 rename으로 notes.md 교체 → notes.md에 AUTO 버전, 임시 이름(`.goutputstream-x`)에는 버전 없음.
+  - 제외: `.git/config`, `.ssh/id_rsa`, `node_modules/x.js`, `a.swp`, data_dir 안 파일 쓰기 → 버전 없음. is_excluded 단위 표(DB §8 규칙마다 해당·비해당 사례, `/a/.gitignore`와 `/a/keys.txt`는 제외 아님).
+  - 기준 스냅샷: 파일 5개(하나 2MiB) 루트 → BASELINE 4개. History를 닫고 파일 하나를 바꾼 뒤 다시 열어 scan_root → 바뀐 파일만 새 BASELINE, gaps NOT_RUNNING 닫힘, 바뀌지 않은 파일은 새 버전 없음. baseline_max_files=3 → 3개에서 멈춤. 2만 파일 순회 중 load_history_async가 1초 안에 답함.
+  - 일시 정지: note_pause(true) → 파일 변경(이벤트 없음) → note_pause(false), scan_root → 바뀐 파일 새 버전, gaps PAUSE 행, gap_after_latest 처리.
+  - HIS-011: Given v1 "a", v2 "b"(현재), When restore_async(v1, NONE) → NOT_CONFIRMED, 파일 불변. CONFIRMED → 파일 "a", 모드 유지, PRE_RESTORE 버전("b") 생성, 이어 mon 이벤트로 AUTO 버전("a"). 현재 파일이 8MiB 초과 → TOO_LARGE, 파일 불변. 파일 없음 → NOT_FOUND.
+  - HIS-012: Given 버전 있는 파일을 외부 rm, Then deleted_at_us 기록, recover_async → 원래 경로에 내용 복원, 삭제 표시 해제. 같은 이름이 이미 있으면 EXISTS, 내용 불변. 부모 디렉터리가 사라졌으면 NOT_FOUND.
+  - E09: 버전 없던 파일(제외 경로나 8MiB 초과) 삭제 → load_history의 versions가 비어 있음(ui가 복구 불가 표시).
+  - 종료: 캡처 대기·기준 스냅샷 중 shutdown → 반환 후 신호 없음, tmp/ 비어 있음.
+- 필수 테스트 / 게이트: G1~G6, G8(기준 스냅샷 2만 파일 소요 시간, 캡처 처리량 기록)
+- 예상 위험 / 차단 조건: inotify 이벤트 타이밍(조건 대기 2초). 편집기마다 저장 방식이 달라 실제 gedit·vim·VS Code 저장은 수동 검증으로 확인한다.
+- 공통: WSL Ubuntu-24.04에서 빌드·테스트, Codex 문서 수정 금지, 커밋에 Co-Authored-By 금지.
+
+## R2-T06 mon 일시 정지
+
+- Task ID / 요구사항 ID: R2-T06 / MON-022 (U-2 결정)
+- 상태: BACKLOG (R2 계약 승인 후 READY. 선행 구현 없음)
+- 목표: `Watcher::pause/resume/paused`와 WatchState::PAUSED를 DESIGN 인터페이스 §4 "R2 추가", 상태 §1(R2 전이)대로 구현한다.
+- 제외 범위: 루트별 일시 정지, 일시 정지 중 이벤트 보관, 화면(R2-T10).
+- 기준 브랜치 / SHA: R2 계약 승인 커밋
+- 선행 작업: R2 계약 승인
+- 허용 파일: `src/mon/**`, `tests/mon/**`, `tests/integration/test_mon_*.cpp`
+- 변경 금지: 루트 빌드 파일·scripts, `tests/support/**`, core(Event 필드), 다른 모듈, docs, harness, 디자인 파일
+- 참조 계약: DESIGN 인터페이스 §4(R2 추가 포함), 이벤트 §5·§6·§8, 상태 §1, 스레드 §2, ADR-0003, ADR-0006
+- 수용 조건 (Given/When/Then):
+  - Given ACTIVE 루트, When pause, Then signal_state(PAUSED) 1회, 이후 파일 생성·수정·삭제에 signal_events 없음. When resume, Then signal_state(ACTIVE)의 total_bytes가 lstat으로 계산한 실제 합과 같고, 이후 이벤트가 오며 root_total 불변식이 성립.
+  - 일시 정지 중 `mkdir -p a/b` 후 b 안 파일 생성 → 재개 뒤 그 파일 수정 이벤트 수신(동적 감시 유지).
+  - 일시 정지 중 루트 삭제 → STOPPED(ROOT_DELETED) 전달. inject_overflow → 이벤트 없음, 재개 후 ACTIVE와 맞는 총용량.
+  - 일시 정지 중 add_root → 등록 후 PAUSED. pause·resume을 두 번씩 → 알림은 한 번씩.
+  - 일시 정지 중 Watcher 소멸 → 신호 없음, ASan·TSan 오류 없음(E10).
+  - R1 mon 테스트·통합·stress 전부 통과.
+- 필수 테스트 / 게이트: G1~G6, G8(기존 stress 재실행)
+- 예상 위험 / 차단 조건: WatchState 값 추가로 다른 모듈의 분기가 바뀌지 않는지 확인(현재 ui는 if 사슬이라 컴파일은 된다). 화면 반영은 R2-T10.
+- 공통: WSL Ubuntu-24.04에서 빌드·테스트, Codex 문서 수정 금지, 커밋에 Co-Authored-By 금지.
+
+## R2-T07 trash
+
+- Task ID / 요구사항 ID: R2-T07 / TRASH-001, TRASH-002, TRASH-003, TRASH-005, TRASH-006
+- 상태: BACKLOG (R2 계약 승인과 R2-T01·R2-T02 병합 후 READY)
+- 목표: `src/trash`를 DESIGN 인터페이스 §11대로 구현한다(홈 휴지통 목록, 원위치 복원, 선택 삭제, 비우기).
+- 제외 범위: 다른 마운트 휴지통(E-13), 지정 위치 복원·복원 충돌 처리·자동 정리(TRASH-004/011/009, R3), 화면.
+- 기준 브랜치 / SHA: R2-T02 통합 커밋
+- 선행 작업: R2-T01, R2-T02
+- 허용 파일: `src/trash/**`, `tests/trash/**`, `tests/integration/test_trash_*.cpp`
+- 변경 금지: 루트 빌드 파일·scripts, `tests/support/**`, 다른 모듈, docs, harness, 디자인 파일
+- 참조 계약: DESIGN 인터페이스 §2·§3·§11, SRS 휴지통 공통 계약, ENGINEERING 보안 §2·§4, freedesktop Trash 규격
+- 수용 조건 (Given/When/Then): HOME·XDG_DATA_HOME은 임시 경로.
+  - TRASH-001/002: Given `fs::trash`로 a.txt, 디렉터리 d(파일 2개), 비 UTF-8 이름 파일을 버림, When list_async, Then Item 3개, original_path 정확(바이트 보존, Path= 이스케이프 해제), deleted_at_us가 버린 시각 ±2초, type·size 정확. .trashinfo 없는 files/ 항목 → info_missing. files/ 없는 info → 목록에 없음. 휴지통 디렉터리 없음 → 빈 목록.
+  - TRASH-003: restore → 원래 위치에 같은 내용·모드로 생기고 files/·info/에서 사라짐. 원래 경로에 같은 이름 있음 → 항목 EXISTS, 양쪽 불변. 부모 없음 → NOT_FOUND. 3개 중 1개 실패 → FAILED(PARTIAL), 나머지 복원. Path=/usr/bin/x인 info → PROTECTED_PATH, 쓰기 시도 없음.
+  - TRASH-006: delete_items(NONE) → NOT_CONFIRMED(제출 안 됨), 불변. CONFIRMED → 고른 항목의 files/·info/만 사라짐.
+  - TRASH-005: empty(NONE) → 거부. CONFIRMED → files/·info/ 비고 디렉터리는 남음.
+  - id "../x", "a/b", "" → 제출 전 INVALID_PATH.
+  - 취소: 큰 트리 empty 중 cancel → CANCELLED, 남은 항목은 files/·info 짝 유지.
+- 필수 테스트 / 게이트: G1~G6
+- 예상 위험 / 차단 조건: DeletionDate는 시간대 없는 로컬 시각이다(테스트 TZ 고정). GLib `g_file_trash`가 실제로 쓰는 위치가 XDG_DATA_HOME/Trash인지 테스트 환경에서 확인.
+- 공통: WSL Ubuntu-24.04에서 빌드·테스트, Codex 문서 수정 금지, 커밋에 Co-Authored-By 금지.
+
+## R2-T08 search
+
+- Task ID / 요구사항 ID: R2-T08 / SRC-001, SRC-003, SRC-004
+- 상태: BACKLOG (R2 계약 승인과 R2-T01 병합 후 READY)
+- 목표: `src/search` `search::Searcher`를 DESIGN 인터페이스 §10대로 구현한다(색인 없는 재귀 순회, 이름 부분 일치, 확장자 거르기, 취소, 접근 불가 기록, 10Hz 묶음 전달).
+- 제외 범위: 내용·정규식·glob·크기·날짜 조건과 색인(SRC-005~015, R3), 화면.
+- 기준 브랜치 / SHA: R2-T01 통합 커밋
+- 선행 작업: R2-T01
+- 허용 파일: `src/search/**`, `tests/search/**`, `tests/integration/test_search_*.cpp`
+- 변경 금지: 루트 빌드 파일·scripts, `tests/support/**`, 다른 모듈, docs, harness, 디자인 파일
+- 참조 계약: DESIGN 인터페이스 §0·§1·§10, 스레드 §1~§4(R2), SRS 검색 공통 계약, ENGINEERING 보안 §1
+- 수용 조건 (Given/When/Then):
+  - SRC-001: Given a/Notes.md, a/b/notes.txt, a/b/c/other.md, a/.hidden/notes.md, 비 UTF-8 이름 파일, When text "notes"(recursive), Then Notes.md, notes.txt만(대소문자 무시). show_hidden이면 .hidden/notes.md 포함. 비 UTF-8 이름도 크래시 없이 비교.
+  - SRC-003: recursive=false → a 바로 아래 항목만.
+  - SRC-004: extensions {"MD"}, text "" → Notes.md, other.md. "x.md.bak"은 제외.
+  - 접근 불가: 하위 디렉터리 000 → Summary.denied에 포함, 나머지 결과 정상(root면 skip). 디렉터리 링크는 따라가지 않고 링크 루프에서 끝남.
+  - max_results=10, 파일 100개 → hits 10, truncated.
+  - 취소: 1만 파일 검색 중 cancel → signal_done(CANCELLED) 1회, 그 뒤 그 id의 hits 없음. 진행 중 start → 이전 검색 CANCELLED가 먼저, 새 결과는 새 id로만.
+  - 전달: 1만 파일에서 signal_hits 묶음 ≤ 500개, 초당 10회 이하.
+  - 수명: 검색 중 소멸 → 신호 없음, TSan 오류 없음. 1만 파일 재귀 검색 소요 시간 기록(NFR-007은 색인 검색 목표라 판정하지 않음).
+- 필수 테스트 / 게이트: G1~G6
+- 예상 위험 / 차단 조건: casefold는 로캘 영향이 적지만 테스트는 LC_ALL=C.UTF-8. /proc 같은 가상 파일 시스템은 마운트 경계 규칙으로 들어가지 않는다.
+- 공통: WSL Ubuntu-24.04에서 빌드·테스트, Codex 문서 수정 금지, 커밋에 Co-Authored-By 금지.
+
+## R2-T09 ui 변경 내용 패널
+
+- Task ID / 요구사항 ID: R2-T09 / HIS-007, HIS-008, HIS-009, HIS-011, HIS-012의 화면, UI-012(패널 접기), 이벤트 §10 연결(mon → his)
+- 상태: BACKLOG (R2-T00·R2-T03·R2-T05 병합 후 READY)
+- 목표: MainWindow가 `his::History`를 열고(실패해도 창은 뜸) 이벤트 §10대로 mon과 잇는다. 변경 내용 패널(머리, 요약 줄, 텍스트 줄 Diff, 이미지 나란히/겹쳐 밀기, 바이너리, 새 파일, 폴더, 삭제됨, 되돌리기 확인), "전체 이력" 버전 목록과 버전 선택 비교, 머리줄 패널 토글을 DESIGN 인터페이스 §7 "R2 추가"대로 만든다. `src/ui/CMakeLists.txt`에 diff·his 링크.
+- 시각 기준: 루트 DESIGN.md "Change-Detail Panel", "GTK3 구현 메모"(위젯 대응, §2 변경 내용 패널), docs/design/prototype/main-window.html 패널. 시안의 복합 문서(md·docx 블록) 표시는 R2에 없다: md는 줄 Diff, docx·odt는 바이너리 표시. 시안 없는 화면(전체 이력 목록, 이력 끔 표시)은 U-10.
+- 제외 범위: 트레이·요약 창·일시 정지(R2-T10), 검색·휴지통 화면(R2-T11), 단어 단위 문서 Diff(R3).
+- 기준 브랜치 / SHA: R2-T05 통합 커밋(R2-T00, R2-T03 포함)
+- 선행 작업: R2-T00, R2-T03, R2-T05
+- 허용 파일: `src/ui/**`, `src/main.cpp`, `tests/ui/**`, `scripts/e2e-*.sh`
+- 변경 금지: 루트 빌드 파일·check-architecture.sh, 다른 모듈, `src/app_info.*`, docs, harness, `PRODUCT.md`, 루트 `DESIGN.md`, `.impeccable/**`, `docs/design/prototype/**`
+- 참조 계약: DESIGN 인터페이스 §7(R2 추가)·§8·§9, 이벤트 §10, 스레드 §1·§4, 상태 §3, ENGINEERING 접근성·보안 §4, 루트 DESIGN.md Components·States·GTK3 구현 메모
+- 수용 조건 (Given/When/Then): Xvfb, HOME·XDG 임시 경로, 테스트 fixture 안에서만.
+  - 연결·HIS-008: Given 감시 루트 안 notes.md 선택, When 외부에서 한 줄 추가·두 줄 삭제, Then 2초 안에 패널 요약 `+1 줄 추가`, `−2 줄 삭제`, 통합 줄 Diff(이전·현재 줄 번호, + / − 기호가 글자로), 메타 줄 `vN → vN+1`. md 파일도 줄 Diff.
+  - HIS-009: PNG 두 버전 → 크기·용량·바뀐 영역 수 요약, 나란히 / 겹쳐 밀기 전환(키보드 가능), 겹쳐 밀기 `Gtk::Scale`이 ←/→로 움직임, 점선 상자 수 = region 수(accessible description 또는 캡처로 확인). 바이너리 → "바이너리 변경", 크기 증감, SHA-256.
+  - HIS-007: "전체 이력"에서 이전 버전을 고르면 그 버전과 현재(최신) 버전을 비교해 보인다.
+  - 새 파일(버전 1개) → 전체를 추가 줄로. 버전 없음 → 보관 없음 문구, gap_after_latest면 그 이유.
+  - HIS-011: 되돌리기 → 인라인 확인(포커스는 취소, Esc로 닫음) → 확정 → 파일 내용이 그 버전, 토스트, 패널이 새 버전 반영. 취소 → 불변.
+  - HIS-012: 외부 rm → 이벤트 로그 DELETE 행(또는 폴더 패널의 삭제 행) 선택 → 삭제 상태와 "vN 복원" → 누르면 파일 복원, 목록에 나타남. 같은 이름이 이미 생겼으면 오류 표시, 덮어쓰지 않음. 버전 없던 파일은 "복구할 버전이 없음"(E09).
+  - UI-012: 머리줄 토글(키보드 가능)로 패널 숨김·보임, 재시작 후 유지.
+  - 이력 끔: data_dir 권한 000 → 앱은 뜨고 이력 끔 표시, 패널은 이력 없음 문구, R1 기능 정상.
+  - 응답성: 5만 줄 텍스트 두 버전 비교 중 목록 키 입력이 응답(NFR-015). 선택을 빠르게 바꾸면 마지막 파일 결과만 보임.
+  - 접근성: 패널 버튼 accessible name, Diff 추가·삭제를 색 외 기호로 구분, 모션 감소 존중.
+  - 종료 (E10): 패널 계산 중·캡처 중 창 닫기 → 스레드 §4 순서, ASan 누수 없음.
+  - R1 ui-interaction 묶음 전부 통과, `--smoke` 유지.
+- 필수 테스트 / 게이트: G1~G7, ui-interaction, `make verify` (+ 실제 Ubuntu 수동 검증 기록: 캡처, 키보드, 빈·로딩·오류 상태)
+- 예상 위험 / 차단 조건: ui.cpp가 커서 패널을 별도 파일(src/ui 안)로 나누는 편이 낫다(구성은 작업이 정함). Pixbuf 디코드 메모리(8MiB 블롭 상한). `Gtk::TextView` 5만 줄 성능.
+- 공통: WSL Ubuntu-24.04에서 빌드·테스트, Codex 문서 수정 금지, 커밋에 Co-Authored-By 금지.
+
+## R2-T10 ui 트레이·요약 창·일시 정지
+
+- Task ID / 요구사항 ID: R2-T10 / MON-022 화면, 트레이 아이콘·네이티브 메뉴·요약 창(PRODUCT.md, U-1·U-2 결정), 창 닫아도 감시 유지
+- 상태: BACKLOG (R2-T06·R2-T09 병합 후 READY)
+- 목표: DESIGN 인터페이스 §7 "R2 추가"의 트레이(libayatana-appindicator3, `gobj()`로 C API), 메뉴 항목 목록을 만드는 순수 함수, 요약 창, 일시 정지 연결(Watcher + History), 창 닫기 동작(트레이 연결 시 숨김), `src/ui/CMakeLists.txt`에 ayatana 링크.
+- 시각 기준: 루트 DESIGN.md "Tray Icon", "Tray Menu", "Summary Window", "GTK3 구현 메모" §3, docs/design/prototype/tray.html. 메뉴는 스타일하지 않는다(Yaru 테마).
+- 제외 범위: 감시 폴더 변경 화면 신설(메뉴 "감시 폴더 변경…"은 메인 창을 보이는 것까지, 그 밖은 U-10), 시작 시 자동 실행, 루트별 일시 정지.
+- 기준 브랜치 / SHA: R2-T09 통합 커밋(R2-T06 포함)
+- 선행 작업: R2-T06, R2-T09
+- 허용 파일: `src/ui/**`, `src/main.cpp`, `tests/ui/**`, `scripts/e2e-*.sh`, `scripts/lsan.supp`·`tests/tsan.supp`(ayatana·dbusmenu 시스템 라이브러리 항목만, 이유 주석, Coordinator 승인)
+- 변경 금지: 루트 빌드 파일·check-architecture.sh, 다른 모듈, `src/app_info.*`, docs, harness, `PRODUCT.md`, 루트 `DESIGN.md`, `.impeccable/**`, `docs/design/prototype/**`
+- 참조 계약: DESIGN 인터페이스 §4(R2 추가)·§7(R2 추가), 이벤트 §10, 스레드 §4(트레이), 상태 §1(PAUSED), TESTING §8(트레이 테스트 한계), ENGINEERING 접근성
+- 수용 조건 (Given/When/Then):
+  - 메뉴 모델(단위 테스트, `tests/ui/`): 감시 중(경로 3개) / 일시 정지 / 넘침 후 재검사 / 변경 없음 상태마다 항목 목록이 루트 DESIGN.md "Tray Menu" 순서·문구와 같고, 정보 줄은 비활성, 최근 변경 3건 최신순, 일시 정지면 "감시 재개".
+  - 아이콘: 감시 중 / 일시 정지 / 넘침·오류마다 아이콘과 설명("FileScope: 감시 중" 등). 넘침 아이콘은 요약 창을 열면 감시 중으로 돌아감.
+  - 요약 창: "요약 열기" → 제목 "FileScope 요약", 상태 줄, 최근 1분 N건(`events_last_minute`와 같음), 감시 경로와 범위 문구, 세션 집계(`counts()`와 같음, 0건 dim), 최근 변경 최대 5행, 빈 상태 문구. 외부 변경이 2초 안에 행으로. 행 선택 → 메인 창이 보이고 그 파일 선택, 패널 열림. Esc로 닫힘.
+  - 일시 정지: 요약 창 버튼·메뉴로 pause → 외부 변경이 목록·로그·요약에 나타나지 않고 최근 1분 0, 일시 정지 표시(정지 아이콘, 흐림, 조용한 띠). 재개 → 이후 변경이 다시 나타나고 일시 정지 중 바뀐 파일은 패널에 새 버전으로 보임.
+  - 창 닫기: 트레이 연결 없음(Xvfb 기본) → R1처럼 종료. 연결 있음(테스트용 StatusNotifierWatcher, TESTING §8) → 창 숨김, 그동안 외부 변경이 이력에 쌓임, "메인 창 열기"로 다시 보이면 숨긴 동안 변경이 목록·로그에 있음, "FileScope 종료" → 종료 순서. 연결 재현이 안 되면 NOT_RUN 사유와 수동 검증 항목으로 넘김.
+  - 접근성: 요약 창 버튼 모두 키보드, accessible name, 상태를 색 외 모양·문구로 구분.
+  - 종료 (E10): 요약 창이 열린 채, 일시 정지 중 종료 → 누수·경쟁 없음.
+  - R1·R2-T09 ui-interaction 묶음 전부 통과.
+- 필수 테스트 / 게이트: G1~G7, ui-interaction, `make verify` (+ 실제 Ubuntu 수동 검증: 아이콘 모양, Yaru 메뉴, Wayland·X11 요약 창 위치, 창 닫은 뒤 감시 유지)
+- 예상 위험 / 차단 조건: 확장 없는 GNOME에서는 트레이가 없다(창 닫기 = 종료가 맞음). libayatana가 표시줄 없을 때 GtkStatusIcon 폴백 경고를 내면 `G_DEBUG=fatal-criticals`에 걸릴 수 있다(critical인지 확인 후 보고). ayatana·dbusmenu 내부 TSan·LSan 보고는 시스템 라이브러리 항목만 억제.
+- 공통: WSL Ubuntu-24.04에서 빌드·테스트, Codex 문서 수정 금지, 커밋에 Co-Authored-By 금지.
+
+## R2-T11 ui 검색·휴지통·미리보기
+
+- Task ID / 요구사항 ID: R2-T11 / SRC-001, SRC-003, SRC-004, TRASH-001, TRASH-002, TRASH-003, TRASH-005, TRASH-006의 화면, PRE-001(텍스트 미리보기), PRE-003(텍스트 편집)
+- 상태: BACKLOG (R2-T07·R2-T08·R2-T10 병합 후, 사용자 결정 U-10·U-11 뒤 READY)
+- 목표: DESIGN 인터페이스 §7 "R2 추가"의 검색 화면, 휴지통 화면, 텍스트 미리보기·편집 보강(UTF-8 검사, 읽기 전용 모드, 저장 충돌 선택)을 만든다. PRE-003은 R1 FS-005 편집기를 그대로 쓰고 새 편집기를 만들지 않는다. `src/ui/CMakeLists.txt`에 search·trash 링크.
+- 시각 기준: 머리줄 검색 칸과 사이드바 "휴지통"은 docs/design/prototype/main-window.html. 검색 결과·휴지통 목록·미리보기·저장 충돌 화면은 시안이 없어 U-10을 따른다.
+- 제외 범위: 내용·정규식 검색, 휴지통 검색·자동 정리, 코드 강조·이미지·PDF 미리보기(R3).
+- 기준 브랜치 / SHA: R2-T10 통합 커밋(R2-T07, R2-T08 포함)
+- 선행 작업: R2-T07, R2-T08, R2-T10, U-10, U-11
+- 허용 파일: `src/ui/**`, `src/main.cpp`, `tests/ui/**`, `scripts/e2e-*.sh`
+- 변경 금지: 루트 빌드 파일·check-architecture.sh, 다른 모듈, `src/app_info.*`, docs, harness, `PRODUCT.md`, 루트 `DESIGN.md`, `.impeccable/**`, `docs/design/prototype/**`
+- 참조 계약: DESIGN 인터페이스 §3·§7(R2 추가)·§10·§11, ENGINEERING 보안 §4·접근성, SRS 검색·휴지통·미리보기 공통 계약
+- 수용 조건 (Given/When/Then):
+  - 검색: Given 현재 폴더 a(R2-T08 fixture), When 검색 칸에 "notes" 입력, Then 하위 결과가 경로와 함께 목록에 나타나고 진행·완료·접근 불가 수가 표시되며 Esc로 취소된다. 결과 행 Enter → 그 폴더로 이동하고 항목 선택. 확장자 거르기 입력(방식은 U-10)으로 md만. 결과 없음 상태 문구.
+  - 휴지통: 사이드바 휴지통 개수가 실제 항목 수, 누르면 목록(이름, 원래 위치, 삭제 시각, 크기). 복원 → 원래 위치에 생기고 목록에서 빠짐, 충돌은 오류 표시·덮어쓰지 않음. 선택 삭제·비우기 → 확인 화면(개수, 첫 이름, 기본 포커스 취소) 뒤 CONFIRMED, 취소면 불변. 앱에서 휴지통으로 보낸 뒤 개수 갱신. 빈 휴지통 문구.
+  - PRE-001: 텍스트 파일 미리보기 → 읽기 전용으로 내용 표시. 4MiB 초과 → 크기 한도 안내. 비 UTF-8·NUL → "텍스트로 열 수 없음", `G_DEBUG=fatal-criticals`에서 critical 없음.
+  - PRE-003: 편집·저장 → 내용 저장, 이어 his 버전 생성. 외부 변경 뒤 저장(E07) → 다시 읽기 / 덮어쓰기 / 취소 선택, 덮어쓰기는 확인 뒤에만, 취소는 외부 내용 유지.
+  - 키보드 접근, accessible name, 빈·로딩·오류 상태.
+  - R1·R2 ui-interaction 묶음 전부 통과.
+- 필수 테스트 / 게이트: G1~G7, ui-interaction, `make verify` (+ 실제 Ubuntu 수동 검증 기록)
+- 예상 위험 / 차단 조건: 머리줄 검색 칸을 R1이 주소 입력·자동완성(NAV-004)으로 쓰고 있다(U-11). 1만 결과 목록 성능은 `Gtk::TreeView`로.
 - 공통: WSL Ubuntu-24.04에서 빌드·테스트, Codex 문서 수정 금지, 커밋에 Co-Authored-By 금지.

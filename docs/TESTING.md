@@ -9,7 +9,7 @@
 | G1 빌드 | `make build` | 종료 코드 0, 프로젝트 코드 경고 없음(경고=오류) | 모든 구현 작업 |
 | G2 단위 | `make test` | 관련 테스트 전체 성공(라벨 `unit`) | 모든 구현 작업 |
 | G3 통합 | `make integration` | 실제 임시 파일 시스템 시나리오 성공(라벨 `integration`) | 모든 구현 작업 |
-| G4 스타일·의존성 | `make format-check lint architecture` | 위반 없음. `architecture`는 `scripts/check-architecture.sh`(모듈 금지 include, `_internal.hpp`/`_testing.hpp` 규칙, 비 ui 모듈의 gtkmm include 금지, `sqlite3.h`는 `src/his/`만) | 모든 구현 작업 |
+| G4 스타일·의존성 | `make format-check lint architecture` | 위반 없음. `architecture`는 `scripts/check-architecture.sh`(모듈 금지 include, `_internal.hpp`/`_testing.hpp` 규칙, 비 ui 모듈의 gtkmm include 금지, `sqlite3.h`는 `src/his/`만, R2: libayatana-appindicator는 `src/ui/`만, diff·his·search·trash 금지 의존) | 모든 구현 작업 |
 | G5 메모리 | `make asan ubsan` | sanitizer 오류 없음(누수 포함, `scripts/lsan.supp`는 GLib/GTK/glibmm/gtkmm 전역 할당만 억제). UBSan은 `-fno-sanitize-recover=undefined`로 첫 오류에서 테스트가 실패해야 한다 | C++ 코드 변경 |
 | G6 동시성 | `make tsan` | 관련 모듈 경쟁 상태 없음 | 동시성 변경 |
 | G7 GUI | `make e2e` | Xvfb 실행(`scripts/e2e-smoke.sh`), 사용자 시나리오 및 캡처 검증 | UI 변경 |
@@ -69,3 +69,17 @@ watch overflow synthetic injection 및 실제 부하 별도 검증; SQLite busy,
 - 각 TC의 기본 내용: 해당 기능의 정상 경로를 임시 fixture에서 실행하고 결과를 확인한다. 해당 기능에 적용되는 권한 오류, 취소, 외부 변경 및 모듈 공통 계약을 검증한다. 세부 입력/기대값은 구현 전 작업 명세에서 확정한다.
 - 확정된 세부 Given/When/Then은 harness/TASKS.md 각 작업의 수용 조건이 정본이고, 요구사항·작업·테스트 연결은 harness/PROGRESS.md 추적표에 둔다.
 - 현재 상태: 모든 TC가 NOT_RUN이다. 독립 QA가 실행해 PASS를 판정하면 추적표에 결과를 적는다.
+
+## 8. R2 테스트 (제안, 2026-11-25)
+
+R2 범위와 TC ID: TC-HIS-001, 005, 007, 008, 009, 011, 012, TC-MON-022, TC-TRASH-001, 002, 003, 005, 006, TC-SRC-001, 003, 004, TC-PRE-001, 003, TC-UI-012, 트레이·요약 창(기능 ID 없음, PRODUCT.md). 세부 Given/When/Then은 harness/TASKS.md R2 작업이 정본이다. 규칙은 §1~§7 그대로이고 아래만 더한다.
+
+- 데이터 경로: his 테스트는 `Options::data_dir`를 `g_dir_make_tmp()` 아래로 준다. XDG_DATA_HOME도 임시 경로로 바꾼다(휴지통 테스트와 같음). 실제 `~/.local/share/filescope`를 만들지 않는다.
+- DB 강제 종료 복구 (NFR-014): 테스트가 `fork()`한 자식에서 History를 열고 이벤트 기록·캡처를 반복하다가 부모가 SIGKILL한다(무작위 시점 20회). 또 `his_testing.hpp` 장애 지점(블롭 rename 뒤 커밋 전, 커밋 뒤 unlink 전)에서 자식이 `_exit`한다. 다시 연 뒤 `PRAGMA integrity_check`가 ok, blobs 행마다 파일 있음, 행 없는 블롭 파일 없음, tmp/ 비어 있음, ref_count가 versions 수와 같음을 확인한다.
+- orphan 정리: 블롭 디렉터리에 행 없는 64자 hex 파일, tmp/ 잔여 파일, 행은 있는데 파일이 없는 블롭을 만들어 두고 열기 → 각각 삭제, 삭제, 행 정리. 64자 hex가 아닌 파일은 남는다.
+- migration: user_version 0 DB → v1, 코드보다 큰 user_version → NOT_SUPPORTED이고 파일 바이트 불변. 손상 파일(무작위 바이트) → `history.db.corrupt-*`로 옮기고 새 DB.
+- busy: 테스트가 별도 sqlite 연결로 `BEGIN EXCLUSIVE`를 쥔 채 기록 요청 → 재시도 뒤 DEGRADED, 잠금 해제 후 다음 기록 성공 → READY.
+- 권한: data_dir를 0755로 만들어 두면 열 때 0700으로 고쳐짐. 생성 파일 모드 0600. 다른 소유자 디렉터리는 root가 필요하므로 NOT_RUN 사유 기록.
+- diff 골든 테스트: `tests/diff/golden/<사례>.{before,after,expected}`. expected는 사람이 쓴 unified 형식(머리 `@@ -a,b +c,d @@`, 줄 기호)이고 구현 출력을 그대로 복사해 만들지 않는다. 사례: 빈 파일 양쪽, 한쪽만 빈 파일, 끝 줄바꿈 없음, CRLF, 같은 줄 반복, md 문서(제목·목록 수정), 비 UTF-8(→ BINARY). 성질 검사: 무작위 작은 입력 500쌍에서 결과를 before에 적용하면 after이고 added+deleted가 O(NM) LCS로 구한 최소값과 같다. 이미지 비교는 코드로 만든 RGBA 버퍼(한 칸만 바꿈, 크기 다름, 임계값 경계)로 검사하고 디코더를 쓰지 않는다.
+- 트레이 테스트 한계: Xvfb와 `dbus-run-session`에는 StatusNotifier 호스트가 없어 AppIndicator가 표시줄에 연결되지 않는다. 그래서 (1) 메뉴 항목 목록을 만드는 순수 함수는 단위 테스트, (2) 연결 없음에서 창 닫기 = 종료(R1 동작 유지)는 ui-interaction, (3) 연결 있음 동작(창 닫아도 감시 유지, 메뉴로 다시 열기·종료)은 테스트용 `org.kde.StatusNotifierWatcher`를 같은 세션 버스에 띄워 재현하고, 재현이 안 되면 NOT_RUN 사유를 적고 실제 Ubuntu 수동 검증으로 넘긴다. 아이콘 모양과 Yaru 메뉴 표시는 수동 검증만 한다.
+- 부하(G8): 초당 1000 이벤트 10초 동안 record_events → 미기록 이벤트 최대치, 기록 지연 P95, DB 크기, HIS_BACKLOG gap 발생 여부를 §5 형식으로 기록. 캡처 처리량(1MiB 파일 100개)과 기준 스냅샷 2만 파일 소요 시간도 기록한다. 측정 전 PASS 금지.

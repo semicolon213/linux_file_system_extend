@@ -17,4 +17,6 @@ Ubuntu 22.04/24.04 LTS용 C++17/GTK3(gtkmm-3.0) 네이티브 파일 탐색기. �
 R0 공통 계약·빌드·테스트 하네스 → R1 탐색/CRUD/감시/작업 큐 → R2 이력/검색/미리보기/휴지통 → R3 디스크/개발 도구/자동화/백업 → R4 실험 기능. 각 릴리스는 적용 가능한 게이트와 독립 QA 통과 후 승인.
 
 - R1 화면 범위와 미배정 P0 ID의 릴리스 배정은 사용자 결정 U-1, U-9(harness/PROGRESS.md 결정 기록)를 따른다.
-- 단계별 모듈 도입(R1 core·job·fs·mon·nav·dash·ui, R2 his·src·pre·trash)은 docs/ARCHITECTURE.md §6.
+- R2는 데모 핵심만 한다(사용자 결정 2026-11-25, PROGRESS 결정 기록): 이력 HIS-001/005/007/008/009/011/012(SQLite 이력, 자동 버전, 버전 비교, 텍스트 줄 Diff(md 포함), 이미지 전후 비교, 버전 복원, 삭제 복구), 메인 창 변경 내용 패널(UI-012 패널 접기), 트레이·네이티브 메뉴·요약 창·일시 정지(MON-022)·창 닫아도 감시 유지, 휴지통 TRASH-001/002/003/005/006, 검색 SRC-001/003/004, 미리보기·편집 PRE-001/003. 바이너리는 "바이너리 변경, 크기 증감"만 보인다.
+- R3로 미룸: docx·odt 내부 텍스트 블록·첨부 이미지 비교(libarchive와 함께), 위에 없는 HIS·SRC·PRE·TRASH의 P1·P2 전부.
+- 단계별 모듈 도입(R1 core·job·fs·mon·nav·dash·ui, R2 his·diff·search·trash, pre는 R3)은 docs/ARCHITECTURE.md §6.

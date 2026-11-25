@@ -10,7 +10,9 @@ Coordinator가 갱신한다. 작업별 ID, 담당, 기준 SHA, 상태, 차단 �
 | 디자인 (메인 창, 트레이) | APPROVED (사용자 확정, 커밋 6d621d5). 루트 PRODUCT.md·DESIGN.md, docs/design/prototype. 언어 변경과 무관하게 유효 |
 | 빌드·테스트 하네스 | R0-002 C++ 전환 APPROVED (b7ca5d3) |
 | R0-002, R1-T01~T07 | APPROVED (R1 묶음 QA PASS, 8c469a9, docs/qa/r1-qa-report.md). 실제 Ubuntu 수동 검증(보고서 끝 체크리스트 15항목)은 사용자 수행 대기 |
-| UI 및 고급 기능 (R2~) | PLANNED |
+| R2 계약 | 제안 (2026-11-25): DESIGN R2 추가·DB 스키마, ARCHITECTURE R2 모듈, ADR-0009(제안), TESTING §8, TASKS R2-T00~T11. 승인 대기 |
+| R2 작업 | R2-T00, R2-T01 READY, 나머지 BACKLOG(계약 승인·선행 병합 대기). 새 패키지 libsqlite3-dev·libayatana-appindicator3-dev 설치 확인 |
+| R3~ | PLANNED |
 
 ### 이력
 
@@ -27,6 +29,7 @@ Coordinator가 갱신한다. 작업별 ID, 담당, 기준 SHA, 상태, 차단 �
 - 2026-11-25: R1-FIX-03(791367c, UI 동작 테스트 make ui-interaction 12묶음, F8 화면, UI 누수) 병합. R1-FIX-02 첫 제출(9aefa0d)은 디버그 심볼 GLib 전제로 기본 환경 tsan 10/10 실패라 반려, 재제출(8388c6c: nav 완료를 GTask 밖으로, tsan.supp는 race:^g_queue_pop_tail$ 하나, lsan.supp는 fontconfig만) 병합. 병합 후 verify·integration·stress·benchmark·ui-interaction 0, 기본 GLib tsan 10회 0. E-10 억제 범위 축소로 F2·F6 해소. e2e 간헐 실패(빈 smoke 출력)와 취소 문구 덮어쓰기는 FIX-03 후속.
 - 2026-11-25: R1-FIX-03 후속(1408171: e2e 전용 D-Bus로 간헐 실패 해소, 실패 단계·stderr 출력, 미감시 띠와 취소 결과 띠 동시 표시) 병합. 병합 후 make verify 3회 0, ui-interaction 0. R1 재QA 착수.
 - 2026-11-25: R1 재QA PASS(8c469a9). F1~F8 해소 재현 확인. 새 발견 Low: N1 copy+OVERWRITE 디렉터리 대상 선삭제(fs.cpp:473), N2 EXDEV 이동 후 원본 검사가 최상위만(fs.cpp:614-623), N3 목록 사전순 정렬 → R2 착수 전 정리 작업으로 배정 예정. R0-002·R1 APPROVED.
+- 2026-11-25: R2 범위 사용자 결정(§3 결정 기록 "R2 범위"). R2 계약 제안: DESIGN 인터페이스 §3·§4·§7 R2 추가와 §8 his·§9 diff·§10 search·§11 trash, 이벤트 §10 이력 연결, DB 스키마 확정안, ARCHITECTURE R2 모듈, ADR-0009(제안), TESTING §8, ENGINEERING 보안 §6, PRD 릴리스 줄. 작업 R2-T00~T11 등록(N1~N3은 R2-T00). 패키지 확인: libsqlite3-dev 3.45.1, libayatana-appindicator3-dev 0.5.93 설치됨(WSL Ubuntu-24.04, dpkg -s).
 
 ## 2. 요구사항 추적표
 
@@ -95,11 +98,37 @@ Coordinator가 갱신한다. 작업별 ID, 담당, 기준 SHA, 상태, 차단 �
 | DASH-003 | R1-T06 | TC-DASH-003: 이벤트 로그 500행, 행 선택 시 목록 선택 | PLANNED |
 | DASH-005 | R1-T06 | TC-DASH-005: 칩·경로 거르기가 원본을 바꾸지 않음 | PLANNED |
 
-### R2 이후 (참고)
+### R2 (데모 핵심, 2026-11-25 사용자 결정)
 
 | 요구사항 | 작업 | 테스트 계획 | 상태 |
 |---|---|---|---|
-| HIS-001 | HIS-db (R2) | 재시작 후 이력 유지 | PLANNED |
+| HIS-001 | R2-T04, R2-T09 | TC-HIS-001: events·gaps 기록, 재열기 후 유지, 강제 종료 후 integrity_check(NFR-014), orphan 정리 | PLANNED |
+| HIS-005 | R2-T04, R2-T05 | TC-HIS-005: 쓰기 완료·편집기 rename 저장 → 자동 버전, 300ms 합치기, 같은 내용 무시, 제외 경로, 기준 스냅샷, 보관 한도 | PLANNED |
+| HIS-007 | R2-T03, R2-T04, R2-T09 | TC-HIS-007: 버전 내용 조회, 전체 이력에서 고른 버전과 최신 비교 | PLANNED |
+| HIS-008 | R2-T03, R2-T09 | TC-HIS-008: Myers 줄 Diff 골든·성질 검사(md 포함), 패널 통합 줄 Diff | PLANNED |
+| HIS-009 | R2-T03, R2-T09 | TC-HIS-009: 격자 이미지 비교 영역, 패널 나란히·겹쳐 밀기 | PLANNED |
+| HIS-011 | R2-T02, R2-T05, R2-T09 | TC-HIS-011: CONFIRMED 필요, PRE_RESTORE 보관 후 install_file, 인라인 확인 | PLANNED |
+| HIS-012 | R2-T02, R2-T05, R2-T09 | TC-HIS-012: 삭제 표시, 원래 경로 복구, 같은 이름 있으면 EXISTS, 버전 없으면 복구 불가(E09) | PLANNED |
+| MON-022 | R2-T06, R2-T10 | TC-MON-022: PAUSED 전이, 일시 정지 중 이벤트 없음·색인 유지, 재개 후 총용량 일치, 트레이·요약 창 표시 | PLANNED |
+| UI-012 | R2-T09 | TC-UI-012: 변경 내용 패널 토글, 재시작 후 유지 | PLANNED |
+| 트레이·요약 창 (기능 ID 없음, PRODUCT.md) | R2-T10 | 메뉴 모델 단위 테스트, 요약 창 지표가 dash와 같음, 창 닫아도 감시 유지(연결 재현 또는 수동 검증, E-14) | PLANNED |
+| SRC-001 | R2-T08, R2-T11 | TC-SRC-001: 이름 부분 일치(casefold), 숨김, 비 UTF-8 | PLANNED |
+| SRC-003 | R2-T08, R2-T11 | TC-SRC-003: 재귀·비재귀, 링크 미추적, 접근 불가 기록, 취소 | PLANNED |
+| SRC-004 | R2-T08, R2-T11 | TC-SRC-004: 확장자 거르기 | PLANNED |
+| TRASH-001 | R2-T07, R2-T11 | TC-TRASH-001: 홈 휴지통(XDG_DATA_HOME/Trash) 읽기, 미지원 시 자동 영구 삭제 없음 | PLANNED |
+| TRASH-002 | R2-T07, R2-T11 | TC-TRASH-002: 목록(원래 경로·삭제 시각·크기), info 없음·깨짐 처리 | PLANNED |
+| TRASH-003 | R2-T07, R2-T11 | TC-TRASH-003: 원위치 복원, 충돌 EXISTS, 부모 없음 NOT_FOUND | PLANNED |
+| TRASH-005 | R2-T02, R2-T07, R2-T11 | TC-TRASH-005: 비우기 CONFIRMED 필요 | PLANNED |
+| TRASH-006 | R2-T02, R2-T07, R2-T11 | TC-TRASH-006: 선택 삭제 CONFIRMED 필요 | PLANNED |
+| PRE-001 | R2-T11 | TC-PRE-001: 읽기 전용 미리보기, 4MiB 한도, 비 UTF-8 거부 | PLANNED |
+| PRE-003 | R2-T11 (R1 FS-005 편집기 재사용) | TC-PRE-003: 저장, 외부 변경 충돌 선택(E07) | PLANNED |
+| R1 QA N1~N3 | R2-T00 | copy OVERWRITE 대상 보존, EXDEV 원본 삭제는 복사한 항목만, 자연 순서 정렬 | PLANNED |
+
+### R3 이후 (참고)
+
+| 요구사항 | 작업 | 테스트 계획 | 상태 |
+|---|---|---|---|
+| HIS·SRC·PRE·TRASH의 나머지 P1·P2, docx·odt 내부 비교 | R3 | R2 결정으로 미룸 | PLANNED |
 | ARC-016 | ARC-safe | 경로 탈출·링크 차단 | PLANNED |
 
 추가 열(구현 SHA, 테스트 경로, 증거 경로, QA 판정)은 통합 시 Integration이 채운다. UI P0와 CFG-001 행은 U-9 결정 범위로 R1-T06 수용 조건에서 추적한다. 변동 열(U-4)은 MON-017 행과 R1-T06 수용 조건에서 추적한다.
@@ -121,6 +150,8 @@ Coordinator가 갱신한다. 작업별 ID, 담당, 기준 SHA, 상태, 차단 �
 | U-7 | 시스템 클립보드(Nautilus 호환 복사·붙여넣기)와 GTK 북마크(~/.config/gtk-3.0/bookmarks) 연동 여부 | fs/ui, nav | 앱 내부 클립보드, 자체 bookmarks.ini |
 | U-8 | 보호 경로 목록에 /opt, /srv, /mnt, /media를 넣는가, /var 전체 보호가 맞는가(/var/www 개발 사용) | ENGINEERING 보안 §2 | 표의 목록 |
 | U-9 | PRD §3 릴리스에 릴리스가 배정되지 않은 P0 ID(UI-001/005/007/011/012/015/016/018~022/025, DASH-001/003/005, CFG-001)의 릴리스 배정 | PROGRESS 추적표, R1-T06 범위 | R1-T06이 NAV/FS/MON/JOB 시연에 필요한 UI만 다룸 |
+| U-10 | 시안 없는 R2 화면: 검색 결과 목록과 확장자 거르기 입력, 휴지통 목록, 전체 이력(버전 목록), 텍스트 미리보기·저장 충돌 선택, 이력 끔 표시, 트레이 감시 경로가 3개를 넘을 때 | R2-T09·T10·T11 | U-6과 같이 새 시안 없이 루트 DESIGN.md 토큰·규칙으로 만들고 `design-pending: U-10` 표시, 묶음 QA에서 화면 확인 |
+| U-11 | 머리줄 검색 칸: R1은 주소 입력·자동완성(NAV-004)으로 쓴다. 시안은 "이 폴더에서 검색"이다 | R2-T11, NAV-004 화면 | 시안대로 검색 칸으로 돌리고 주소 입력은 breadcrumb 편집(Ctrl+L)으로 옮김 |
 
 ### 기술 확인
 
@@ -167,3 +198,21 @@ Coordinator가 갱신한다. 작업별 ID, 담당, 기준 SHA, 상태, 차단 �
 - 작업 재편: R0-001(C 하네스)은 R0-002로 대체. R1-T01/T02/T05는 C++ 포팅(수용 조건 동일). R1-T03/T04/T07의 C 시도(일시 중지 상태)는 중단하고 결과를 버린다. 새 C++ 계약으로 BACKLOG에서 다시 시작한다.
 - 선행 조건(BLOCKED): R0-002는 사용자가 WSL Ubuntu-24.04에 `sudo apt install libgtkmm-3.0-dev`를 실행했다고 확인한 뒤에만 READY가 된다(에이전트는 sudo를 쓰지 않는다).
 - 해소(2026-11-24): 사용자가 설치함. gtkmm-3.0 3.24.9, glibmm 2.66.7, sigc++ 2.12.1 확인. ADR-0008은 Coordinator 승인.
+
+### 결정 기록 (2026-11-25, 사용자): R2 범위
+
+- R2는 데모 핵심만 한다: HIS-001(SQLite 이력), HIS-005(변경 시 자동 버전), HIS-007/008/009(버전 비교, md를 포함한 텍스트 줄 Diff, 이미지 전후 비교), HIS-011(버전 복원), HIS-012(삭제 파일 복구), 메인 창 변경 내용 패널(UI-012 패널 접기), 트레이 아이콘·네이티브 메뉴·요약 창·일시 정지(MON-022)·메인 창을 닫아도 감시 유지(U-1·U-2에서 R2로 미룬 것), 휴지통 화면 TRASH-001/002/003/005/006, 검색 P0 SRC-001/003/004, 미리보기·편집 P0 PRE-001/003(R1 FS-005 편집기를 다시 쓰고 겹치는 구현을 만들지 않음).
+- docx·odt 내부 텍스트 블록·첨부 이미지 비교는 R3(libarchive와 함께). R2 Diff는 텍스트(줄 단위, md 포함)와 이미지 전후 비교다. 바이너리는 "바이너리 변경, 크기 증감"만 보인다.
+- 나머지 HIS·SRC·PRE·TRASH의 P1·P2는 R3. docs/PRD.md §3 반영.
+- R1 QA Low N1(copy + OVERWRITE 디렉터리 대상 선삭제), N2(EXDEV 이동 뒤 최상위만 검사), N3(사전순 정렬)는 R2 시작 정리 작업 R2-T00으로 한다.
+- 계약 반영(Coordinator, 제안): DESIGN 인터페이스 §3·§4·§7 R2 추가와 §8~§11, 이벤트 §10, 스레드·상태·메모리 R2 항목, DB 스키마, ARCHITECTURE R2 모듈(검색 모듈 디렉터리는 `src/search`, pre 모듈은 R3로 미룸), ADR-0009(제안), TESTING §8, ENGINEERING 보안 §6. 휴지통은 홈 휴지통을 규격대로 직접 읽는다(gvfsd-trash 의존 없음, E-13).
+
+### 기술 확인 (R2)
+
+| ID | 내용 | 닫는 방법 |
+|---|---|---|
+| E-11 | 보관 한도(경로별 20개, 파일 8MiB, 전체 512MiB, 이벤트 20만 행·30일)는 측정 전 가정 | R2-T04·T05 G8 기록과 실제 데모 저장소 크기로 조정, DESIGN DB §6 갱신 |
+| E-12 | 기준 스냅샷 한도(파일 1MiB, 루트당 2만 개·128MiB)와 캡처 지연 300ms, 미기록 이벤트 상한 5만은 측정 전 가정 | R2-T05 G8(2만 파일 순회 시간, 캡처 처리량)과 편집기 저장 수동 검증 후 조정 |
+| E-13 | 휴지통 목록은 홈 휴지통($XDG_DATA_HOME/Trash)만. 다른 마운트의 .Trash-$uid에 버린 항목은 보이지 않는다 | R3에서 마운트별 휴지통 또는 trash:/// 사용을 다시 결정 |
+| E-14 | Xvfb·dbus-run-session에는 StatusNotifier 호스트가 없어 트레이 연결 동작을 자동으로 재현하기 어렵다 | R2-T10에서 테스트용 StatusNotifierWatcher로 재현 시도, 안 되면 NOT_RUN과 실제 Ubuntu 수동 검증 |
+| E-15 | 편집기마다 저장 방식(직접 쓰기, 임시 파일 rename, 백업 파일)이 달라 자동 버전 시점이 다를 수 있다 | R2-T05 통합 테스트 두 방식 + gedit·vim·VS Code 수동 확인 |

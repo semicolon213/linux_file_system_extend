@@ -120,6 +120,12 @@ ADR-0002(코드와 원칙), ADR-0008(C++ 표현)을 따른다.
 - 모든 파일 테스트는 `g_dir_make_tmp()` 아래. `HOME`·`XDG_*`를 임시 경로로 바꿔 휴지통·즐겨찾기 테스트가 실제 홈을 건드리지 않게 한다.
 - 보호 경로 테스트는 실제 쓰기를 시도하지 않고 `core::check_protected`와 API 거부(PROTECTED_PATH)만 확인한다.
 
+### 보안 §6 이력 저장 (R2)
+
+- 이력 데이터는 `$XDG_DATA_HOME/filescope`(0700, 파일 0600)에만 둔다. 민감·소음 경로 제외 목록과 권한 처리는 DESIGN DB 스키마 §1·§8이 정본이다.
+- 파일 내용(블롭)은 로그·이벤트 행에 넣지 않는다. 경로는 DB에 남는다(이벤트 기록이 목적).
+- 복원·복구도 사용자 파일 쓰기 규칙(보호 경로, 원자 교체, stamp 충돌)을 그대로 따른다(`fs::install_file`, DESIGN 인터페이스 §3 R2 추가).
+
 ## 접근성
 
 모든 핵심 작업 키보드 접근, visible focus, accessible name, 색상 외 상태 구분, HiDPI 및 글꼴 확대, reduced motion. Orca 화면 읽기 프로그램과 개발용 Orca coordinator를 구분한다.
