@@ -1,0 +1,5 @@
+add_executable(test_search test_search.cpp)
+target_link_libraries(test_search PRIVATE filescope_search filescope_test_support)
+filescope_configure_target(test_search)
+filescope_add_test(search test_search)
+set_tests_properties(search PROPERTIES LABELS unit)
