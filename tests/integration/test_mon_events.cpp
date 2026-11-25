@@ -87,6 +87,114 @@ void test_basic_events_and_size_index() {
     g_assert_cmpuint(total.total_bytes, ==, 150);
 }
 
+void test_pause_keeps_index_and_dynamic_watches() {
+    using namespace filescope::mon;
+    filescope::test::TestEnvironment environment;
+    const auto root = environment.root() + "/watch";
+    const auto nested = root + "/a/b";
+    const auto file = nested + "/file";
+    const auto removed = root + "/removed";
+    const auto moved = root + "/moved";
+    const auto terminal = environment.root() + "/terminal";
+    g_assert_cmpint(g_mkdir(root.c_str(), 0700), ==, 0);
+    g_assert_cmpint(g_mkdir(terminal.c_str(), 0700), ==, 0);
+    write_file(removed, "remove");
+    write_file(moved, "move");
+
+    auto created = Watcher::create();
+    g_assert_true(created.ok());
+    auto watcher = std::move(created).value();
+    std::vector<filescope::core::EventPtr> events;
+    std::vector<WatchInfo> states;
+    watcher->signal_events().connect(
+        [&events](const auto &batch) { events.insert(events.end(), batch.begin(), batch.end()); });
+    watcher->signal_state().connect([&states](const auto &info, const auto &error) {
+        g_assert_false(error.has_value());
+        states.push_back(info);
+    });
+    const auto added = watcher->add_root(root, WatchMode::RECURSIVE);
+    g_assert_true(added.ok());
+    const auto id = added.value();
+    g_assert_true(filescope::test::wait_until([&] { return states.size() == 1; }, 2000));
+    g_assert_true(states.back().state == WatchState::ACTIVE);
+    g_assert_false(watcher->paused());
+
+    watcher->pause();
+    watcher->pause();
+    g_assert_true(watcher->paused());
+    g_assert_true(filescope::test::wait_until([&] { return states.size() == 2; }, 2000));
+    g_assert_true(states.back().state == WatchState::PAUSED);
+    g_assert_true(states.back().reason == WatchReason::NONE);
+    events.clear();
+
+    g_assert_cmpint(g_mkdir_with_parents(nested.c_str(), 0700), ==, 0);
+    write_file(file, "first");
+    write_file(file, "more", true);
+    g_assert_cmpint(g_remove(removed.c_str()), ==, 0);
+    filescope::mon::testing::set_move_window_ms(*watcher, 5000);
+    g_assert_cmpint(g_rename(moved.c_str(), (environment.root() + "/outside").c_str()), ==, 0);
+    const auto added_while_paused = watcher->add_root(terminal, WatchMode::NON_RECURSIVE);
+    g_assert_true(added_while_paused.ok());
+    g_assert_true(filescope::test::wait_until([&] { return states.size() == 3; }, 2000));
+    g_assert_cmpuint(states.back().id, ==, added_while_paused.value());
+    g_assert_true(states.back().state == WatchState::PAUSED);
+    g_assert_cmpint(g_rmdir(terminal.c_str()), ==, 0);
+    g_assert_true(filescope::test::wait_until([&] { return states.size() == 4; }, 2000));
+    g_assert_true(states.back().state == WatchState::STOPPED);
+    g_assert_true(states.back().reason == WatchReason::ROOT_DELETED);
+    g_assert_true(events.empty());
+
+    watcher->resume();
+    watcher->resume();
+    g_assert_false(watcher->paused());
+    g_assert_true(filescope::test::wait_until([&] { return states.size() == 5; }, 2000));
+    g_assert_true(states.back().state == WatchState::ACTIVE);
+    struct stat status {};
+    g_assert_cmpint(lstat(file.c_str(), &status), ==, 0);
+    auto total = static_cast<std::uint64_t>(status.st_size);
+    g_assert_true(states.back().total_known);
+    g_assert_cmpuint(states.back().total_bytes, ==, total);
+    g_assert_true(events.empty());
+    write_file(file, "after", true);
+    g_assert_true(filescope::test::wait_until(
+        [&] { return has_kind(events, EventKind::CLOSE_WRITE, file); }, 2000));
+    g_assert_true(has_kind(events, EventKind::MODIFY, file));
+    for (const auto &event : events) {
+        g_assert_cmpuint(event->watch_id, ==, id);
+        g_assert_cmpstr(event->path.c_str(), ==, file.c_str());
+        g_assert_true(event->size_delta.has_value());
+        g_assert_true(event->root_total.has_value());
+        total = static_cast<std::uint64_t>(static_cast<std::int64_t>(total) +
+                                           event->size_delta.value_or(0));
+        g_assert_cmpuint(event->root_total.value_or(0), ==, total);
+    }
+    const auto root_total = watcher->root_total(id);
+    g_assert_true(root_total.has_value());
+    g_assert_cmpuint(root_total.value_or(RootTotal{}).total_bytes, ==, total);
+    g_assert_cmpuint(states.size(), ==, 5);
+
+    watcher->pause();
+    g_assert_true(filescope::test::wait_until([&] { return states.size() == 6; }, 2000));
+    events.clear();
+    write_file(file, "overflow replacement");
+    filescope::mon::testing::inject_overflow(*watcher);
+    watcher->resume();
+    g_assert_true(filescope::test::wait_until([&] { return states.size() == 7; }, 2000));
+    g_assert_true(states.back().state == WatchState::ACTIVE);
+    g_assert_cmpint(lstat(file.c_str(), &status), ==, 0);
+    g_assert_cmpuint(states.back().total_bytes, ==, static_cast<std::uint64_t>(status.st_size));
+    g_assert_true(events.empty());
+
+    watcher->pause();
+    g_assert_true(filescope::test::wait_until([&] { return states.size() == 8; }, 2000));
+    filescope::mon::testing::inject_overflow(*watcher);
+    watcher.reset();
+    while (Glib::MainContext::get_default()->iteration(false)) {
+    }
+    g_assert_cmpuint(states.size(), ==, 8);
+    g_assert_true(events.empty());
+}
+
 void test_recursive_moves_overflow_and_remove() {
     filescope::test::TestEnvironment environment;
     const std::string root = environment.root() + "/watch";
@@ -272,6 +380,8 @@ void test_root_terminal_events_and_destruction() {
 int main(int argc, char **argv) {
     g_test_init(&argc, &argv, nullptr);
     g_test_add_func("/mon/integration/basic-events-size", test_basic_events_and_size_index);
+    g_test_add_func("/mon/integration/pause-keeps-index",
+                    test_pause_keeps_index_and_dynamic_watches);
     g_test_add_func("/mon/integration/recursive-moves-overflow-remove",
                     test_recursive_moves_overflow_and_remove);
     g_test_add_func("/mon/integration/multiple-roots-merge-moved-in-queue-gap",
