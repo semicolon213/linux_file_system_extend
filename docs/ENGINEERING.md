@@ -10,7 +10,7 @@ CMake/Ninja, C++17, out-of-source build. 루트 `project(filescope ... LANGUAGES
 
 ## 의존성
 
-필수: build-essential(g++), cmake, ninja-build, pkg-config, libgtk-3-dev, libgtkmm-3.0-dev(glibmm-2.4, giomm, cairomm, libsigc++-2.0 개발 패키지를 함께 설치), libsqlite3-dev, libayatana-appindicator3-dev(트레이, PRODUCT.md). 개발·검증: xvfb, clang-format, clang-tidy. 선택: libarchive-dev, libgtksourceview-4-dev, libvte-2.91-dev, libpoppler-glib-dev, libgit2-dev. Ubuntu 22.04/24.04 모두 기본 저장소에 gtkmm 3.24가 있다(`Gtk::make_managed` 사용 가능). Ubuntu 버전별 설치 가능 여부 확인 후 버전 고정. 선택 기능 미지원 시 명시적으로 비활성화. 새 C++ 라이브러리(Boost, GoogleTest, fmt 등)는 ADR 없이 추가하지 않는다.
+컴파일러: GCC(g++, Ubuntu 기본 g++ 11·13). clang은 clang-format·clang-tidy에만 쓴다(사용자 결정 2026-11-25). 필수: build-essential(g++), cmake, ninja-build, pkg-config, libgtk-3-dev, libgtkmm-3.0-dev(glibmm-2.4, giomm, cairomm, libsigc++-2.0 개발 패키지를 함께 설치), libsqlite3-dev, libayatana-appindicator3-dev(트레이, PRODUCT.md). 개발·검증: xvfb, clang-format, clang-tidy. 선택: libarchive-dev, libgtksourceview-4-dev, libvte-2.91-dev, libpoppler-glib-dev, libgit2-dev. Ubuntu 22.04/24.04 모두 기본 저장소에 gtkmm 3.24가 있다(`Gtk::make_managed` 사용 가능). Ubuntu 버전별 설치 가능 여부 확인 후 버전 고정. 선택 기능 미지원 시 명시적으로 비활성화. 새 C++ 라이브러리(Boost, GoogleTest, fmt 등)는 ADR 없이 추가하지 않는다.
 
 설치 명령(사용자가 직접, `sudo` 필요):
 

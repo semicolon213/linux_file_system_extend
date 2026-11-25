@@ -28,15 +28,15 @@
 | R1-T05 nav C++ 포팅 | APPROVED (2eab368, R1 QA PASS 8c469a9) | R1-T01 |
 | R1-T06 ui | APPROVED (a148ce3, R1 QA PASS 8c469a9) | R1-T03, R1-T04, R1-T05, R1-T07 |
 | R1-T07 dash | APPROVED (08424c7, R1 QA PASS 8c469a9) | R1-T01 |
-| R2-T00 R1 QA Low 정리 (N1~N3) | IN_PROGRESS (Codex) | R1 APPROVED |
-| R2-T01 R2 빌드 기반 | IN_PROGRESS (Codex) | R1 APPROVED |
-| R2-T02 fs R2 보조 API | BACKLOG | R2 계약 승인, R2-T00 |
-| R2-T03 diff | BACKLOG | R2 계약 승인, R2-T01 |
-| R2-T04 his 저장소 | BACKLOG | ADR-0009 승인, R2-T01 |
+| R2-T00 R1 QA Low 정리 (N1~N3) | VERIFY (7e980f5 병합, R2 묶음 QA 대기) | R1 APPROVED |
+| R2-T01 R2 빌드 기반 | VERIFY (4849475 병합, R2 묶음 QA 대기) | R1 APPROVED |
+| R2-T02 fs R2 보조 API | READY | R2 계약 승인, R2-T00 |
+| R2-T03 diff | READY | R2 계약 승인, R2-T01 |
+| R2-T04 his 저장소 | READY | ADR-0009 승인, R2-T01 |
 | R2-T05 his 자동 버전·복원 | BACKLOG | R2-T02, R2-T04 |
-| R2-T06 mon 일시 정지 | READY | R2 계약 승인(완료) |
+| R2-T06 mon 일시 정지 | VERIFY (82a7c77 병합, R2 묶음 QA 대기) | R2 계약 승인(완료) |
 | R2-T07 trash | BACKLOG | R2 계약 승인, R2-T01, R2-T02 |
-| R2-T08 search | BACKLOG | R2 계약 승인, R2-T01 |
+| R2-T08 search | READY | R2 계약 승인, R2-T01 |
 | R2-T09 ui 변경 내용 패널 | BACKLOG | R2-T00, R2-T03, R2-T05 |
 | R2-T10 ui 트레이·요약 창·일시 정지 | BACKLOG | R2-T06, R2-T09 |
 | R2-T11 ui 검색·휴지통·미리보기 | BACKLOG | R2-T07, R2-T08, R2-T10, U-10 시안 확정 |

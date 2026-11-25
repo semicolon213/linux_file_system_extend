@@ -11,7 +11,7 @@ Coordinator가 갱신한다. 작업별 ID, 담당, 기준 SHA, 상태, 차단 �
 | 빌드·테스트 하네스 | R0-002 C++ 전환 APPROVED (b7ca5d3) |
 | R0-002, R1-T01~T07 | APPROVED (R1 묶음 QA PASS, 8c469a9, docs/qa/r1-qa-report.md). 실제 Ubuntu 수동 검증(보고서 끝 체크리스트 15항목)은 사용자 수행 대기 |
 | R2 계약 | 승인 (2026-11-25, Coordinator, ad49d0b): DESIGN R2 추가·DB 스키마, ARCHITECTURE R2 모듈, ADR-0009(제안), TESTING §8, TASKS R2-T00~T11. |
-| R2 작업 | R2-T00·T01 IN_PROGRESS(Codex), R2-T06 READY, 나머지 선행 병합 대기. U-10 시안 확정(R2-T11은 T07·T08·T10 병합 대기) |
+| R2 작업 | R2-T00·T01·T06 VERIFY(병합, 묶음 QA 대기). R2-T02·T03·T04·T08 READY. U-10 시안 확정(R2-T11은 T07·T08·T10 병합 대기) |
 | R3~ | PLANNED |
 
 ### 이력
@@ -32,6 +32,7 @@ Coordinator가 갱신한다. 작업별 ID, 담당, 기준 SHA, 상태, 차단 �
 - 2026-11-25: R2 범위 사용자 결정(§3 결정 기록 "R2 범위"). R2 계약 제안: DESIGN 인터페이스 §3·§4·§7 R2 추가와 §8 his·§9 diff·§10 search·§11 trash, 이벤트 §10 이력 연결, DB 스키마 확정안, ARCHITECTURE R2 모듈, ADR-0009(제안), TESTING §8, ENGINEERING 보안 §6, PRD 릴리스 줄. 작업 R2-T00~T11 등록(N1~N3은 R2-T00). 패키지 확인: libsqlite3-dev 3.45.1, libayatana-appindicator3-dev 0.5.93 설치됨(WSL Ubuntu-24.04, dpkg -s).
 - 2026-11-25: R2 계약·ADR-0009 승인(Coordinator). U-10 사용자 결정: 시안 없는 R2 화면(검색 결과, 휴지통 목록, 버전 목록, 미리보기·저장 충돌, 이력 끔)은 Impeccable로 시안을 먼저 확정한 뒤 구현. U-11 사용자 결정: 머리줄 칸은 시안대로 "이 폴더에서 검색", 주소 입력은 Ctrl+L·경로 표시줄 편집으로 이동. R2-T00·T01 Codex 착수.
 - 2026-11-25: U-10 R2 화면 시안 확정(사용자 승인): docs/design/prototype/r2-screens.html, 루트 DESIGN.md "R2 화면" 절.
+- 2026-11-25: R2-T01(4849475), R2-T00(7e980f5), R2-T06(82a7c77) 병합. 병합 상태 게이트 직접 재실행: verify·integration·stress·ui-interaction 0, tsan 10/10(배포판 GLib). 컴파일러 GCC(g++) 고정 결정(사용자): ENGINEERING 빌드 절, CMakePresets 고정은 다음 빌드 파일 작업에서.
 
 ## 2. 요구사항 추적표
 
