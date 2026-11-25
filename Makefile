@@ -29,7 +29,8 @@ ubsan:
 tsan:
 	cmake --preset tsan
 	cmake --build --preset tsan
-	ctest --preset tsan
+	TSAN_OPTIONS="halt_on_error=1:suppressions=$(CURDIR)/tests/tsan.supp" \
+		ctest --test-dir build/tsan --output-on-failure
 
 e2e: build
 	./scripts/e2e-smoke.sh ./build/debug/filescope

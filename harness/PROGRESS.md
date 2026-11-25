@@ -10,8 +10,8 @@ Coordinator가 갱신한다. 작업별 ID, 담당, 기준 SHA, 상태, 차단 �
 | 디자인 (메인 창, 트레이) | APPROVED (사용자 확정, 커밋 6d621d5). 루트 PRODUCT.md·DESIGN.md, docs/design/prototype. 언어 변경과 무관하게 유효 |
 | 빌드·테스트 하네스 | R0-002 C++ 전환 VERIFY (b7ca5d3) |
 | R1-T01 core, R1-T02 job, R1-T05 nav, R1-T07 dash, R1-T04 mon | VERIFY (1bdb270, 91ba40b, 2eab368, 08424c7, 4cc1116). 개발자 게이트 통과, 묶음 QA 대기 |
-| R1-T03 fs | IN_PROGRESS (Codex) |
-| R1-T06 ui | BACKLOG (T03 이후) |
+| R1-T03 fs | VERIFY (74eb5ae). 병합 후 게이트 0, tsan 5회 0 |
+| R1-T06 ui | IN_PROGRESS (Codex, 기준 f25513f). E-10 tsan 안정화 작업 병행 |
 | UI 및 고급 기능 (R2~) | PLANNED |
 
 ### 이력
@@ -22,6 +22,8 @@ Coordinator가 갱신한다. 작업별 ID, 담당, 기준 SHA, 상태, 차단 �
 - 2026-11-24: 문서를 핵심 문서 체계로 통합(AGENTS.md 목차, docs/ 6개, harness/ 4개). 옛 문서 이름 대응은 docs/ARCHITECTURE.md §8.
 - 2026-11-24: 구현 언어를 C++17 + gtkmm-3.0으로 전환(사용자 결정, 수업 요구사항). ADR-0007·0008, docs/DESIGN.md 인터페이스 C++ 판, ARCHITECTURE·ENGINEERING·TESTING 갱신. 작업 재편: R0-002 신설(BLOCKED, gtkmm 설치 대기), R1-T01/T02/T05는 C++ 포팅, R1-T03/T04/T07의 C 시도는 중단·폐기 후 BACKLOG.
 - 2026-11-24: C++ 판 R0-002, R1-T01/T02/T05/T07 병합(VERIFY). R1-T04 mon 병합(4cc1116, 병합 후 build/test/integration/format-check/lint/architecture/asan/ubsan 0; tsan은 nav 테스트 1회 GLib 내부 경합 보고 후 3회 재실행 모두 0, E-10).
+- 2026-11-24: R1-T03 fs 병합(74eb5ae, 작업자 보고는 tsan의 nav 간헐 실패(E-10)로 failed, 병합 후 Coordinator 재실행 게이트 0·tsan 5회 0). R1-T06 ui 착수, E-10 수정 작업 병행.
+- 2026-11-25: Codex 모델 gpt-6.2-sol 전환(사용자). R1-FIX-01 tsan 안정화 병합(7252b74), 병합 후 게이트 0·tsan 10회 0.
 
 ## 2. 요구사항 추적표
 
@@ -151,7 +153,7 @@ Coordinator가 갱신한다. 작업별 ID, 담당, 기준 SHA, 상태, 차단 �
 |---|---|---|
 | E-7 | 하드 링크는 경로마다 총용량에 더해진다(중복 집계). 디스크 모듈 공통 계약의 "하드 링크 중복 집계 방지"와 다르다 | 결정(2026-11-24 Coordinator): R1 시연 범위에서 허용. R2 이력·디스크 작업에서 (dev, ino) 집계로 교체 |
 | E-8 | 10만 파일 색인 16MiB 예산과 등록 시간은 측정 전 가정 | R1-T04 G8 기록: 10만 파일/1만 디렉터리 등록 0.247s, RSS +9.7MiB, 10초 1만 작업 gap 없음(WSL, 4cc1116) |
-| E-10 | tsan에서 nav 테스트가 간헐적으로 GLib 스레드 풀 내부(g_queue_pop_tail) 경합을 보고. 비계측 libglib 오탐 추정 | 묶음 QA에서 재현 여부 확인, 필요 시 TSan suppressions 또는 nav 테스트 동기화 보완 |
+| E-10 | tsan에서 nav 테스트가 간헐적으로 GLib 스레드 풀 내부(g_queue_pop_tail) 경합을 보고. 비계측 libglib 오탐 추정 | 해결(7252b74): 억제 없이 재현 후 비계측 GLib 동기화 오탐으로 판정, tests/tsan.supp(called_from_lib:libglib) + nav GTask 동기화 표시. 병합 후 tsan 10회 0. 남은 위험: GLib 직접 호출 인터셉터의 실제 경합도 가려짐(묶음 QA 확인) |
 | E-9 | R1-T01(진행 중)의 FsEvent에 size_delta/root_total 필드·getter, 루트 CMake에 dash 하위 디렉터리 추가가 필요하다 | 결정: 진행 중인 R1-T01에 보완 전달(2026-11-24) |
 
 ### 결정 기록 (2026-11-24, 사용자): 구현 언어 C++17 + gtkmm-3.0
