@@ -1,0 +1,5 @@
+add_executable(test_his_store test_his_store.cpp)
+target_link_libraries(test_his_store PRIVATE filescope_his filescope_test_support)
+filescope_configure_target(test_his_store)
+filescope_add_test(test_his_store test_his_store)
+set_tests_properties(test_his_store PROPERTIES LABELS unit)
