@@ -28,18 +28,18 @@
 | R1-T05 nav C++ 포팅 | APPROVED (2eab368, R1 QA PASS 8c469a9) | R1-T01 |
 | R1-T06 ui | APPROVED (a148ce3, R1 QA PASS 8c469a9) | R1-T03, R1-T04, R1-T05, R1-T07 |
 | R1-T07 dash | APPROVED (08424c7, R1 QA PASS 8c469a9) | R1-T01 |
-| R2-T00 R1 QA Low 정리 (N1~N3) | READY | R1 APPROVED |
-| R2-T01 R2 빌드 기반 | READY | R1 APPROVED |
+| R2-T00 R1 QA Low 정리 (N1~N3) | IN_PROGRESS (Codex) | R1 APPROVED |
+| R2-T01 R2 빌드 기반 | IN_PROGRESS (Codex) | R1 APPROVED |
 | R2-T02 fs R2 보조 API | BACKLOG | R2 계약 승인, R2-T00 |
 | R2-T03 diff | BACKLOG | R2 계약 승인, R2-T01 |
 | R2-T04 his 저장소 | BACKLOG | ADR-0009 승인, R2-T01 |
 | R2-T05 his 자동 버전·복원 | BACKLOG | R2-T02, R2-T04 |
-| R2-T06 mon 일시 정지 | BACKLOG | R2 계약 승인 |
+| R2-T06 mon 일시 정지 | READY | R2 계약 승인(완료) |
 | R2-T07 trash | BACKLOG | R2 계약 승인, R2-T01, R2-T02 |
 | R2-T08 search | BACKLOG | R2 계약 승인, R2-T01 |
 | R2-T09 ui 변경 내용 패널 | BACKLOG | R2-T00, R2-T03, R2-T05 |
 | R2-T10 ui 트레이·요약 창·일시 정지 | BACKLOG | R2-T06, R2-T09 |
-| R2-T11 ui 검색·휴지통·미리보기 | BACKLOG | R2-T07, R2-T08, R2-T10, U-10·U-11 결정 |
+| R2-T11 ui 검색·휴지통·미리보기 | BACKLOG | R2-T07, R2-T08, R2-T10, U-10 시안 확정 |
 
 의존 순서: R0-002 → R1-T01 → {R1-T02, R1-T04, R1-T05, R1-T07 병렬} → R1-T03(T02 필요) → R1-T06. 독립 QA는 R1 전체를 묶어 한 번 한다(R0-002 포함, PROGRESS 미결 사항 E-6).
 
@@ -422,7 +422,7 @@ R2 의존 순서: {R2-T00, R2-T01 병렬} → {R2-T02(T00 뒤), R2-T03, R2-T04, 
 ## R2-T06 mon 일시 정지
 
 - Task ID / 요구사항 ID: R2-T06 / MON-022 (U-2 결정)
-- 상태: BACKLOG (R2 계약 승인 후 READY. 선행 구현 없음)
+- 상태: READY (R2 계약 승인 ad49d0b)
 - 목표: `Watcher::pause/resume/paused`와 WatchState::PAUSED를 DESIGN 인터페이스 §4 "R2 추가", 상태 §1(R2 전이)대로 구현한다.
 - 제외 범위: 루트별 일시 정지, 일시 정지 중 이벤트 보관, 화면(R2-T10).
 - 기준 브랜치 / SHA: R2 계약 승인 커밋

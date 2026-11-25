@@ -10,8 +10,8 @@ Coordinator가 갱신한다. 작업별 ID, 담당, 기준 SHA, 상태, 차단 �
 | 디자인 (메인 창, 트레이) | APPROVED (사용자 확정, 커밋 6d621d5). 루트 PRODUCT.md·DESIGN.md, docs/design/prototype. 언어 변경과 무관하게 유효 |
 | 빌드·테스트 하네스 | R0-002 C++ 전환 APPROVED (b7ca5d3) |
 | R0-002, R1-T01~T07 | APPROVED (R1 묶음 QA PASS, 8c469a9, docs/qa/r1-qa-report.md). 실제 Ubuntu 수동 검증(보고서 끝 체크리스트 15항목)은 사용자 수행 대기 |
-| R2 계약 | 제안 (2026-11-25): DESIGN R2 추가·DB 스키마, ARCHITECTURE R2 모듈, ADR-0009(제안), TESTING §8, TASKS R2-T00~T11. 승인 대기 |
-| R2 작업 | R2-T00, R2-T01 READY, 나머지 BACKLOG(계약 승인·선행 병합 대기). 새 패키지 libsqlite3-dev·libayatana-appindicator3-dev 설치 확인 |
+| R2 계약 | 승인 (2026-11-25, Coordinator, ad49d0b): DESIGN R2 추가·DB 스키마, ARCHITECTURE R2 모듈, ADR-0009(제안), TESTING §8, TASKS R2-T00~T11. |
+| R2 작업 | R2-T00·T01 IN_PROGRESS(Codex), R2-T06 READY, 나머지 선행 병합 대기. R2-T11은 U-10에 따라 시안 확정 대기 |
 | R3~ | PLANNED |
 
 ### 이력
@@ -30,6 +30,7 @@ Coordinator가 갱신한다. 작업별 ID, 담당, 기준 SHA, 상태, 차단 �
 - 2026-11-25: R1-FIX-03 후속(1408171: e2e 전용 D-Bus로 간헐 실패 해소, 실패 단계·stderr 출력, 미감시 띠와 취소 결과 띠 동시 표시) 병합. 병합 후 make verify 3회 0, ui-interaction 0. R1 재QA 착수.
 - 2026-11-25: R1 재QA PASS(8c469a9). F1~F8 해소 재현 확인. 새 발견 Low: N1 copy+OVERWRITE 디렉터리 대상 선삭제(fs.cpp:473), N2 EXDEV 이동 후 원본 검사가 최상위만(fs.cpp:614-623), N3 목록 사전순 정렬 → R2 착수 전 정리 작업으로 배정 예정. R0-002·R1 APPROVED.
 - 2026-11-25: R2 범위 사용자 결정(§3 결정 기록 "R2 범위"). R2 계약 제안: DESIGN 인터페이스 §3·§4·§7 R2 추가와 §8 his·§9 diff·§10 search·§11 trash, 이벤트 §10 이력 연결, DB 스키마 확정안, ARCHITECTURE R2 모듈, ADR-0009(제안), TESTING §8, ENGINEERING 보안 §6, PRD 릴리스 줄. 작업 R2-T00~T11 등록(N1~N3은 R2-T00). 패키지 확인: libsqlite3-dev 3.45.1, libayatana-appindicator3-dev 0.5.93 설치됨(WSL Ubuntu-24.04, dpkg -s).
+- 2026-11-25: R2 계약·ADR-0009 승인(Coordinator). U-10 사용자 결정: 시안 없는 R2 화면(검색 결과, 휴지통 목록, 버전 목록, 미리보기·저장 충돌, 이력 끔)은 Impeccable로 시안을 먼저 확정한 뒤 구현. U-11 사용자 결정: 머리줄 칸은 시안대로 "이 폴더에서 검색", 주소 입력은 Ctrl+L·경로 표시줄 편집으로 이동. R2-T00·T01 Codex 착수.
 
 ## 2. 요구사항 추적표
 
@@ -150,8 +151,8 @@ Coordinator가 갱신한다. 작업별 ID, 담당, 기준 SHA, 상태, 차단 �
 | U-7 | 시스템 클립보드(Nautilus 호환 복사·붙여넣기)와 GTK 북마크(~/.config/gtk-3.0/bookmarks) 연동 여부 | fs/ui, nav | 앱 내부 클립보드, 자체 bookmarks.ini |
 | U-8 | 보호 경로 목록에 /opt, /srv, /mnt, /media를 넣는가, /var 전체 보호가 맞는가(/var/www 개발 사용) | ENGINEERING 보안 §2 | 표의 목록 |
 | U-9 | PRD §3 릴리스에 릴리스가 배정되지 않은 P0 ID(UI-001/005/007/011/012/015/016/018~022/025, DASH-001/003/005, CFG-001)의 릴리스 배정 | PROGRESS 추적표, R1-T06 범위 | R1-T06이 NAV/FS/MON/JOB 시연에 필요한 UI만 다룸 |
-| U-10 | 시안 없는 R2 화면: 검색 결과 목록과 확장자 거르기 입력, 휴지통 목록, 전체 이력(버전 목록), 텍스트 미리보기·저장 충돌 선택, 이력 끔 표시, 트레이 감시 경로가 3개를 넘을 때 | R2-T09·T10·T11 | U-6과 같이 새 시안 없이 루트 DESIGN.md 토큰·규칙으로 만들고 `design-pending: U-10` 표시, 묶음 QA에서 화면 확인 |
-| U-11 | 머리줄 검색 칸: R1은 주소 입력·자동완성(NAV-004)으로 쓴다. 시안은 "이 폴더에서 검색"이다 | R2-T11, NAV-004 화면 | 시안대로 검색 칸으로 돌리고 주소 입력은 breadcrumb 편집(Ctrl+L)으로 옮김 |
+| U-10 | 시안 없는 R2 화면: 검색 결과 목록과 확장자 거르기 입력, 휴지통 목록, 전체 이력(버전 목록), 텍스트 미리보기·저장 충돌 선택, 이력 끔 표시, 트레이 감시 경로가 3개를 넘을 때 | R2-T09·T10·T11 | 결정: 시안 먼저(사용자, 2026-11-25) |
+| U-11 | 머리줄 검색 칸: R1은 주소 입력·자동완성(NAV-004)으로 쓴다. 시안은 "이 폴더에서 검색"이다 | R2-T11, NAV-004 화면 | 결정: 시안대로 검색 칸, 주소는 Ctrl+L(사용자, 2026-11-25) |
 
 ### 기술 확인
 
