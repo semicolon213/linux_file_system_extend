@@ -1,4 +1,4 @@
-.PHONY: build test format-check lint architecture asan ubsan tsan e2e integration stress benchmark verify
+.PHONY: build test format-check lint architecture asan ubsan tsan e2e ui-interaction integration stress benchmark verify
 
 build:
 	cmake --preset debug
@@ -34,6 +34,9 @@ tsan:
 
 e2e: build
 	./scripts/e2e-smoke.sh ./build/debug/filescope
+
+ui-interaction: build
+	bash tests/ui/run.sh ./build/debug/filescope
 
 integration: build
 	ctest --preset debug -L integration --no-tests=error
