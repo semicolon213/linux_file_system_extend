@@ -16,6 +16,7 @@
 #include <sys/stat.h>
 #include <sys/syscall.h>
 #include <unistd.h>
+#include <unordered_map>
 #include <utility>
 
 #include <giomm/file.h>
@@ -26,6 +27,9 @@ namespace {
 
 constexpr std::size_t kCopyBufferBytes = std::size_t{64} * 1024U;
 std::atomic<int> next_write_error{0};
+std::atomic<void (*)(job::Job &)> before_copy_write{nullptr};
+std::atomic<void (*)(const std::string &)> before_source_removal{nullptr};
+std::atomic<bool> force_cross_device{false};
 
 struct Snapshot {
     std::string path;
@@ -120,6 +124,22 @@ FileStamp stamp_from_stat(const FileStatus &status) {
 bool same_type(mode_t first, mode_t second) noexcept {
     return (first & S_IFMT) == (second & S_IFMT);
 }
+
+struct CopiedEntries {
+    struct Item {
+        mode_t type;
+        FileStamp stamp;
+    };
+
+    std::size_t root_length;
+    std::unordered_map<std::string, Item> items;
+
+    std::string relative(const Entry &entry) const {
+        const bool has_separator =
+            entry.path.size() > root_length && entry.path[root_length] == '/';
+        return entry.path.substr(root_length + static_cast<std::size_t>(has_separator));
+    }
+};
 
 bool is_fatal(core::ErrorCode code) noexcept {
     return code == core::ErrorCode::NO_SPACE || code == core::ErrorCode::CANCELLED;
@@ -216,9 +236,20 @@ core::UniqueFd open_directory(const Entry &entry) {
                                  O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC));
 }
 
-core::Result<void> remove_entry(const Entry &entry, job::Job *job);
+struct Removal {
+    job::Job *job = nullptr;
+    const CopiedEntries *copied = nullptr;
+    bool private_copy = false;
+};
 
-core::Result<void> remove_directory(const Entry &path, const FileStatus &status, job::Job *job) {
+core::Error move_conflict() {
+    return core::make_error(core::ErrorCode::CONFLICT, "Source changed during move");
+}
+
+core::Result<void> remove_entry(const Entry &entry, const Removal &removal);
+
+core::Result<void> remove_directory(const Entry &path, const FileStatus &status,
+                                    const Removal &removal, const FileStamp *copied_stamp) {
     auto fd = open_directory(path);
     if (!fd) {
         return core::error_from_errno(errno, "open directory", path.path);
@@ -230,6 +261,13 @@ core::Result<void> remove_directory(const Entry &path, const FileStatus &status,
     if (opened.st_dev != status.dev || opened.st_ino != status.ino) {
         return core::make_error(core::ErrorCode::CONFLICT, "Directory changed during removal");
     }
+    if (removal.private_copy && fchmod(fd.get(), 0700) != 0) {
+        return core::error_from_errno(errno, "fchmod private copy", path.path);
+    }
+    // A changed directory can still contain unchanged children, but must itself remain.
+    const bool changed =
+        copied_stamp != nullptr && *copied_stamp != stamp_from_stat(file_status_from_stat(opened));
+    std::optional<core::Error> child_error;
     std::unique_ptr<DIR, DirectoryCloser> directory(fdopendir(fd.get()));
     if (!directory) {
         return core::error_from_errno(errno, "fdopendir", path.path);
@@ -248,14 +286,25 @@ core::Result<void> remove_directory(const Entry &path, const FileStatus &status,
         if (name == "." || name == "..") {
             continue;
         }
-        if (job != nullptr && job->is_cancelled()) {
-            return cancelled_error();
+        const Entry child = path.child(entry->d_name, dirfd(directory.get()));
+        if (const auto removed = remove_entry(child, removal); !removed) {
+            if (removal.copied == nullptr || is_fatal(removed.error().code)) {
+                return removed.error();
+            }
+            removal.job->add_item_result({child.path, removed.error(), false});
+            if (!child_error || removed.error().code == core::ErrorCode::CONFLICT) {
+                child_error = removed.error();
+            }
         }
-        if (const auto removed =
-                remove_entry(path.child(entry->d_name, dirfd(directory.get())), job);
-            !removed) {
-            return removed.error();
-        }
+    }
+    if (changed) {
+        return move_conflict();
+    }
+    if (child_error) {
+        return *child_error;
+    }
+    if (removal.job != nullptr && removal.job->is_cancelled()) {
+        return cancelled_error();
     }
     FileStatus current;
     if (const auto read = read_status(path, current); !read) {
@@ -265,18 +314,36 @@ core::Result<void> remove_directory(const Entry &path, const FileStatus &status,
         return core::make_error(core::ErrorCode::CONFLICT, "Directory changed during removal");
     }
     if (unlinkat(path.parent, path.name().c_str(), AT_REMOVEDIR) != 0) {
+        if (removal.copied != nullptr && errno == ENOTEMPTY) {
+            return move_conflict();
+        }
         return core::error_from_errno(errno, "unlinkat directory", path.path);
     }
     return {};
 }
 
-core::Result<void> remove_entry(const Entry &path, job::Job *job) {
+core::Result<void> remove_entry(const Entry &path, const Removal &removal) {
+    if (removal.job != nullptr && removal.job->is_cancelled()) {
+        return cancelled_error();
+    }
     FileStatus status;
     if (const auto read = read_status(path, status); !read) {
         return read.error();
     }
+    const FileStamp *copied_stamp = nullptr;
+    if (removal.copied != nullptr) {
+        const auto &items = removal.copied->items;
+        const auto item = items.find(removal.copied->relative(path));
+        const FileStamp current = stamp_from_stat(status);
+        if (item == items.end() || !same_type(item->second.type, status.mode) ||
+            item->second.stamp.dev != current.dev || item->second.stamp.ino != current.ino ||
+            (!S_ISDIR(status.mode) && item->second.stamp != current)) {
+            return move_conflict();
+        }
+        copied_stamp = &item->second.stamp;
+    }
     if (S_ISDIR(status.mode)) {
-        return remove_directory(path, status, job);
+        return remove_directory(path, status, removal, copied_stamp);
     }
     if (unlinkat(path.parent, path.name().c_str(), 0) != 0) {
         return core::error_from_errno(errno, "unlinkat", path.path);
@@ -355,8 +422,8 @@ Entry temporary_sibling(const Entry &target) {
             target.parent};
 }
 
-core::Result<void> copy_entry(const Entry &source, const Entry &target, bool replace,
-                              job::Job &job);
+core::Result<void> copy_entry(const Entry &source, const Entry &target, bool replace, job::Job &job,
+                              CopiedEntries *copied = nullptr);
 
 // NOLINTNEXTLINE(bugprone-easily-swappable-parameters): source and target follow copy.
 core::Result<void> copy_regular(const Entry &source, const Entry &target, const FileStatus &status,
@@ -404,6 +471,9 @@ core::Result<void> copy_regular(const Entry &source, const Entry &target, const 
             }
             const int saved_errno = errno;
             return core::error_from_errno(saved_errno, "read", source.path);
+        }
+        if (const auto hook = before_copy_write.load(); hook != nullptr) {
+            hook(job);
         }
         if (const auto written = write_all(target_fd.get(), buffer.data(),
                                            static_cast<std::size_t>(count), temporary.path);
@@ -458,7 +528,7 @@ core::Result<void> copy_symlink(const Entry &source, const Entry &target, const 
 }
 
 core::Result<void> copy_directory(const Entry &source, const Entry &target,
-                                  const FileStatus &status, bool replace, job::Job &job) {
+                                  const FileStatus &status, job::Job &job, CopiedEntries *copied) {
     auto fd = open_directory(source);
     if (!fd) {
         return core::error_from_errno(errno, "open directory", source.path);
@@ -469,11 +539,6 @@ core::Result<void> copy_directory(const Entry &source, const Entry &target,
     }
     if (opened.st_dev != status.dev || opened.st_ino != status.ino) {
         return core::make_error(core::ErrorCode::CONFLICT, "Directory changed during copy");
-    }
-    if (replace) {
-        if (const auto removed = remove_entry(target, &job); !removed) {
-            return removed.error();
-        }
     }
     if (mkdirat(target.parent, target.name().c_str(), 0700) != 0) {
         return core::error_from_errno(errno, "mkdirat", target.path);
@@ -508,12 +573,12 @@ core::Result<void> copy_directory(const Entry &source, const Entry &target,
         }
         const Entry child_source = source.child(entry->d_name, dirfd(directory.get()));
         const Entry child_target = target.child(entry->d_name, target_fd.get());
-        const auto copied = copy_entry(child_source, child_target, false, job);
-        if (!copied) {
+        const auto result = copy_entry(child_source, child_target, false, job, copied);
+        if (!result) {
             partial = true;
-            job.add_item_result({child_source.path, copied.error(), false});
-            if (is_fatal(copied.error().code)) {
-                return copied.error();
+            job.add_item_result({child_source.path, result.error(), false});
+            if (is_fatal(result.error().code)) {
+                return result.error();
             }
         }
     }
@@ -529,8 +594,8 @@ core::Result<void> copy_directory(const Entry &source, const Entry &target,
     return {};
 }
 
-core::Result<void> copy_entry(const Entry &source, const Entry &target, bool replace,
-                              job::Job &job) {
+core::Result<void> copy_entry(const Entry &source, const Entry &target, bool replace, job::Job &job,
+                              CopiedEntries *copied) {
     if (job.is_cancelled()) {
         return cancelled_error();
     }
@@ -538,91 +603,133 @@ core::Result<void> copy_entry(const Entry &source, const Entry &target, bool rep
     if (const auto read = read_status(source, status); !read) {
         return read.error();
     }
+    core::Result<void> result;
     if (S_ISREG(status.mode)) {
-        return copy_regular(source, target, status, replace, job);
+        result = copy_regular(source, target, status, replace, job);
+    } else if (S_ISDIR(status.mode)) {
+        result = copy_directory(source, target, status, job, copied);
+    } else if (S_ISLNK(status.mode)) {
+        result = copy_symlink(source, target, status, replace);
+    } else {
+        return core::make_error(core::ErrorCode::NOT_SUPPORTED, "Special files cannot be copied");
     }
-    if (S_ISDIR(status.mode)) {
-        return copy_directory(source, target, status, replace, job);
+    if (result && copied != nullptr) {
+        copied->items.emplace(copied->relative(source),
+                              CopiedEntries::Item{status.mode & S_IFMT, stamp_from_stat(status)});
     }
-    if (S_ISLNK(status.mode)) {
-        return copy_symlink(source, target, status, replace);
+    return result;
+}
+
+template <typename Operation>
+core::Result<void> replace_directory(const std::string &target, Operation operation) {
+    FileStatus existing;
+    if (const auto read = read_status({target}, existing); !read) {
+        if (read.error().code == core::ErrorCode::NOT_FOUND) {
+            return operation(std::string{});
+        }
+        return read.error();
     }
-    return core::make_error(core::ErrorCode::NOT_SUPPORTED, "Special files cannot be copied");
+    if (!S_ISDIR(existing.mode)) {
+        return core::make_error(core::ErrorCode::CONFLICT, "Destination type changed");
+    }
+    std::string staging = temporary_template(parent_path(target));
+    if (mkdtemp(staging.data()) == nullptr) {
+        return core::error_from_errno(errno, "mkdtemp", staging);
+    }
+    const std::string backup = core::path_join(staging, "original");
+    if (const auto saved = rename_into_place(target, backup, false); !saved) {
+        rmdir(staging.c_str());
+        return saved.error();
+    }
+
+    FileStatus saved;
+    const auto read = read_status({backup}, saved);
+    auto result = read && saved.dev == existing.dev && saved.ino == existing.ino
+                      ? operation(staging)
+                      : core::Result<void>(
+                            core::make_error(core::ErrorCode::CONFLICT, "Destination changed"));
+    if (!result) {
+        if (const auto restored = rename_into_place(backup, target, false); !restored) {
+            return core::make_error(core::ErrorCode::PARTIAL,
+                                    "Original destination preserved at " + backup);
+        }
+    } else if (const auto removed = remove_entry({backup}, {}); !removed) {
+        return removed.error();
+    }
+    if (rmdir(staging.c_str()) != 0) {
+        return core::error_from_errno(errno, "rmdir", staging);
+    }
+    return result;
+}
+
+core::Result<void> copy_into_directory_target(const std::string &staging, const Entry &source,
+                                              const std::string &target, job::Job &job,
+                                              CopiedEntries *copied = nullptr) {
+    if (staging.empty()) {
+        return copy_entry(source, {target}, false, job, copied);
+    }
+    const std::string incoming = core::path_join(staging, "incoming");
+    auto result = copy_entry(source, {incoming}, false, job, copied);
+    if (result && job.is_cancelled()) {
+        result = cancelled_error();
+    }
+    if (result) {
+        FileStatus status;
+        const auto read = read_status({incoming}, status);
+        if (!read) {
+            result = read.error();
+        } else if (!S_ISDIR(status.mode)) {
+            result = move_conflict();
+        } else {
+            result = rename_into_place(incoming, target, false);
+        }
+    }
+    if (!result) {
+        const auto removed = remove_entry({incoming}, {nullptr, nullptr, true});
+        if (!removed && removed.error().code != core::ErrorCode::NOT_FOUND) {
+            return removed.error();
+        }
+    }
+    return result;
 }
 
 core::Result<void> move_entry(const Snapshot &source, const std::string &target, bool replace,
                               job::Job &job) {
-    std::string staging;
     FileStatus before;
     if (const auto read = read_status({source.path}, before); !read) {
         return read.error();
     }
     if (!same_type(before.mode, source.type)) {
-        return core::make_error(core::ErrorCode::CONFLICT, "Source type changed during move");
+        return move_conflict();
     }
-    std::string backup;
-    if (replace && S_ISDIR(source.type)) {
-        struct stat existing {};
-        if (lstat(target.c_str(), &existing) == 0) {
-            if (!S_ISDIR(existing.st_mode)) {
-                return core::make_error(core::ErrorCode::CONFLICT,
-                                        "Destination type changed during move");
-            }
-            staging = temporary_template(parent_path(target));
-            if (mkdtemp(staging.data()) == nullptr) {
-                return core::error_from_errno(errno, "mkdtemp", staging);
-            }
-            backup = core::path_join(staging, "original");
-            if (const auto saved = rename_into_place(target, backup, false); !saved) {
-                rmdir(staging.c_str());
-                return saved.error();
-            }
-        } else if (errno != ENOENT) {
-            return core::error_from_errno(errno, "lstat", target);
+    CopiedEntries copied{source.path.size(), {}};
+    const bool directory = S_ISDIR(source.type);
+    const auto move = [&](const std::string &staging) {
+        auto renamed = force_cross_device.exchange(false)
+                           ? core::Result<void>(core::error_from_errno(EXDEV, "rename", target))
+                           : rename_into_place(source.path, target, replace && !directory);
+        if (renamed || renamed.error().code != core::ErrorCode::CROSS_DEVICE) {
+            return renamed;
         }
+        if (directory) {
+            return copy_into_directory_target(staging, {source.path}, target, job, &copied);
+        }
+        return copy_entry({source.path}, {target}, replace, job, &copied);
+    };
+    auto result = replace && directory ? replace_directory(target, move) : move({});
+    if (!result || copied.items.empty()) {
+        return result;
     }
-
-    bool copied_across_devices = false;
-    auto result = rename_into_place(source.path, target, replace && backup.empty());
-    if (!result && result.error().code == core::ErrorCode::CROSS_DEVICE) {
-        if (backup.empty()) {
-            result = copy_entry({source.path}, {target}, replace && !S_ISDIR(source.type), job);
-        } else {
-            const std::string incoming = core::path_join(staging, "incoming");
-            result = copy_entry({source.path}, {incoming}, false, job);
-            if (result) {
-                result = rename_into_place(incoming, target, false);
-            }
-            if (!result) {
-                static_cast<void>(remove_entry({incoming}, nullptr));
-            }
-        }
-        copied_across_devices = result.ok();
+    const auto &root = copied.items.at("");
+    const FileStamp original = stamp_from_stat(before);
+    if (!same_type(root.type, before.mode) || root.stamp.dev != original.dev ||
+        root.stamp.ino != original.ino) {
+        return move_conflict();
     }
-    if (!backup.empty()) {
-        if (!result) {
-            if (const auto restored = rename_into_place(backup, target, false); !restored) {
-                return core::make_error(core::ErrorCode::PARTIAL,
-                                        "Original destination preserved at " + backup);
-            }
-        } else if (const auto removed = remove_entry({backup}, nullptr); !removed) {
-            return removed.error();
-        }
-        if (rmdir(staging.c_str()) != 0) {
-            return core::error_from_errno(errno, "rmdir", staging);
-        }
+    if (const auto hook = before_source_removal.exchange(nullptr); hook != nullptr) {
+        hook(source.path);
     }
-    if (copied_across_devices) {
-        FileStatus after;
-        if (const auto read = read_status({source.path}, after); !read) {
-            return read.error();
-        }
-        if (!(stamp_from_stat(before) == stamp_from_stat(after))) {
-            return core::make_error(core::ErrorCode::CONFLICT, "Source changed during move");
-        }
-        return remove_entry({source.path}, &job);
-    }
-    return result;
+    return remove_entry({source.path}, {&job, &copied});
 }
 
 core::Result<void> process_copy(job::Job &job, const std::vector<Snapshot> &sources,
@@ -664,6 +771,11 @@ core::Result<void> process_copy(job::Job &job, const std::vector<Snapshot> &sour
         const bool replace = resolved.value().replace;
         if (moving) {
             result = move_entry(source, resolved.value().path, replace, job);
+        } else if (replace && S_ISDIR(source.type)) {
+            const auto &target = resolved.value().path;
+            result = replace_directory(target, [&](const std::string &staging) {
+                return copy_into_directory_target(staging, {source.path}, target, job);
+            });
         } else {
             result = copy_entry({source.path}, {resolved.value().path}, replace, job);
         }
@@ -722,6 +834,14 @@ namespace testing {
 void fail_next_write(core::ErrorCode code) noexcept {
     next_write_error.store(static_cast<int>(code));
 }
+
+void set_copy_write_hook(void (*hook)(job::Job &)) noexcept { before_copy_write.store(hook); }
+
+void set_source_removal_hook(void (*hook)(const std::string &)) noexcept {
+    before_source_removal.store(hook);
+}
+
+void force_next_cross_device_move() noexcept { force_cross_device.store(true); }
 
 } // namespace testing
 
@@ -989,7 +1109,7 @@ core::Result<job::JobId> delete_permanently(job::JobQueue &queue,
             for (const auto &entry : entries) {
                 core::Result<void> result = revalidate_source(entry, core::PathOp::REMOVE);
                 if (result) {
-                    result = remove_entry({entry.path}, &job);
+                    result = remove_entry({entry.path}, {&job});
                 }
                 std::optional<core::Error> item_error;
                 if (!result) {
