@@ -11,7 +11,7 @@ Coordinator가 갱신한다. 작업별 ID, 담당, 기준 SHA, 상태, 차단 �
 | 빌드·테스트 하네스 | R0-002 C++ 전환 VERIFY (b7ca5d3) |
 | R1-T01 core, R1-T02 job, R1-T05 nav, R1-T07 dash, R1-T04 mon | VERIFY (1bdb270, 91ba40b, 2eab368, 08424c7, 4cc1116). 개발자 게이트 통과, 묶음 QA 대기 |
 | R1-T03 fs | VERIFY (74eb5ae). 병합 후 게이트 0, tsan 5회 0 |
-| R1-T06 ui | IN_PROGRESS (Codex, 기준 f25513f). E-10 tsan 안정화 작업 병행 |
+| R1-T06 ui | VERIFY (dd42875, a148ce3). make verify 0. R1 묶음 QA 진행 중 |
 | UI 및 고급 기능 (R2~) | PLANNED |
 
 ### 이력
@@ -24,6 +24,7 @@ Coordinator가 갱신한다. 작업별 ID, 담당, 기준 SHA, 상태, 차단 �
 - 2026-11-24: C++ 판 R0-002, R1-T01/T02/T05/T07 병합(VERIFY). R1-T04 mon 병합(4cc1116, 병합 후 build/test/integration/format-check/lint/architecture/asan/ubsan 0; tsan은 nav 테스트 1회 GLib 내부 경합 보고 후 3회 재실행 모두 0, E-10).
 - 2026-11-24: R1-T03 fs 병합(74eb5ae, 작업자 보고는 tsan의 nav 간헐 실패(E-10)로 failed, 병합 후 Coordinator 재실행 게이트 0·tsan 5회 0). R1-T06 ui 착수, E-10 수정 작업 병행.
 - 2026-11-25: Codex 모델 gpt-6.2-sol 전환(사용자). R1-FIX-01 tsan 안정화 병합(7252b74), 병합 후 게이트 0·tsan 10회 0.
+- 2026-11-25: R1-T06 ui 병합(a148ce3, fast-forward). GUI LSan의 fontconfig 종료 시 캐시 보고는 최소 GTK 창에서도 재현되어 scripts/lsan.supp에 leak:libfontconfig.so.1 승인(Coordinator). 병합 후 make verify 0. R1 구현 완료, 묶음 QA 착수.
 
 ## 2. 요구사항 추적표
 
