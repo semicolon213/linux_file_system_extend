@@ -41,7 +41,7 @@
 | R2-T10 ui 트레이·요약 창·일시 정지 | VERIFY (cde40b1 병합, R2 묶음 QA 대기) | R2-T06, R2-T09 |
 | R2-T11 ui 검색·휴지통·미리보기 | VERIFY (c08cce1 병합, R2 묶음 QA 대기) | R2-T07, R2-T08, R2-T10, U-10 시안 확정 |
 | R2-F01 his 종료 테스트 간헐 실패, GCC 고정 | VERIFY (f6b1cd2 병합, R2 묶음 QA 대기) | R2-T05 |
-| R2-F02 트레이 생성 API 교체 (QA N1) | READY | R2 QA |
+| R2-F02 트레이 생성 API 교체 (QA N1) | VERIFY (a12201c 병합, N1 해소 확인) | R2 QA |
 
 의존 순서: R0-002 → R1-T01 → {R1-T02, R1-T04, R1-T05, R1-T07 병렬} → R1-T03(T02 필요) → R1-T06. 독립 QA는 R1 전체를 묶어 한 번 한다(R0-002 포함, PROGRESS 미결 사항 E-6).
 
@@ -580,7 +580,7 @@ R2 의존 순서: {R2-T00, R2-T01 병렬} → {R2-T02(T00 뒤), R2-T03, R2-T04, 
 ## R2-F02 트레이 생성 API 교체 (R2 QA N1)
 
 - Task ID / 요구사항 ID: R2-F02 / docs/qa/r2-qa-report.md R2-N1
-- 상태: READY
+- 상태: VERIFY (a12201c 병합. Coordinator 검증: 트레이 호스트 없는 ASan 실행 Wayland·X11 각 0/10, 수정 전 3/3. 1차 시도 set_icon_theme_path는 10/10 재현으로 폐기)
 - 목표: `src/ui/tray.cpp`에서 트레이 표시기를 `app_indicator_new_with_path(...)` 대신 `app_indicator_new(id, icon_name, category)`로 만든다. 사용자 아이콘 폴더(`<exe 디렉터리>/tray-icons`)는 생성 전에 `gtk_icon_theme_append_search_path(gtk_icon_theme_get_default(), ...)`로 기본 아이콘 테마 검색 경로에 더한다. 아이콘 이름, 설명, 상태 전환 동작은 그대로다.
 - 허용 파일: `src/ui/**`, `tests/ui/**`
 - 변경 금지: 다른 모듈, 루트 빌드 파일, scripts, 억제 파일, docs, harness
