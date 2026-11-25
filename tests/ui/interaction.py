@@ -354,19 +354,7 @@ def exercise(app, home, fixture):
     first_file.chmod(0o600)
     wait("new watch delivers an event", lambda: row(log, str(first_file), 2))
 
-    # Alternate inodes while the app is stopped so inotify cannot coalesce the events.
-    capacity = int(Path("/proc/sys/fs/inotify/max_queued_events").read_text())
-    pid = app.get_process_id()
-    os.kill(pid, signal.SIGSTOP)
-    try:
-        _, status = os.waitpid(pid, os.WUNTRACED)
-        assert os.WIFSTOPPED(status), "FileScope did not stop"
-        for i in range(capacity // 2 + 512):
-            mode = 0o600 if i % 2 else 0o644
-            first_file.chmod(mode)
-            second_file.chmod(mode)
-    finally:
-        os.kill(pid, signal.SIGCONT)
+    force_overflow(app, first_file, second_file)
     wait("RESYNC_DONE banner", lambda: next(
         (n for n in descendants(app) if n.get_role() == Atspi.Role.LABEL
          and n.get_name().startswith("대기열이 넘쳐 다시 검사해 맞췄습니다") and showing(n)),
@@ -394,6 +382,22 @@ def exercise(app, home, fixture):
     print("PASS folders first, natural filename order and invalid UTF-8", flush=True)
 
     close(app)
+
+
+def force_overflow(app, first_file, second_file):
+    # Alternate inodes while the app is stopped so inotify cannot coalesce the events.
+    capacity = int(Path("/proc/sys/fs/inotify/max_queued_events").read_text())
+    pid = app.get_process_id()
+    os.kill(pid, signal.SIGSTOP)
+    try:
+        _, status = os.waitpid(pid, os.WUNTRACED)
+        assert os.WIFSTOPPED(status), "FileScope did not stop"
+        for i in range(capacity // 2 + 512):
+            mode = 0o600 if i % 2 else 0o644
+            first_file.chmod(mode)
+            second_file.chmod(mode)
+    finally:
+        os.kill(pid, signal.SIGCONT)
 
 
 def close(app):

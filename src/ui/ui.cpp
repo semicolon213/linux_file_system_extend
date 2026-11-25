@@ -8,6 +8,7 @@
 #include "mon/mon.hpp"
 #include "nav/nav.hpp"
 #include "ui/change_panel.hpp"
+#include "ui/tray.hpp"
 
 #include <algorithm>
 #include <array>
@@ -104,6 +105,24 @@ treeview header button { min-height: 32px; border-radius: 0; border-width: 0 0 1
 .fs-change-diff { border: 1px solid @fs_line; border-radius: 4px; }
 .fs-change-diff text { background: @fs_bg; color: @fs_ink; }
 scrollbar slider { background: @fs_scroll_thumb; min-width: 8px; min-height: 8px; }
+.fs-summary decoration { border: 1px solid @fs_line_float; border-radius: 6px; }
+.fs-summary headerbar { min-height: 40px; }
+.fs-summary headerbar button { min-height: 26px; min-width: 26px; padding: 0; color: @fs_dim; }
+.fs-summary-status { padding: 12px; }
+.fs-summary-path { min-height: 27px; padding: 0 12px; border-top: 1px solid @fs_line_soft; }
+.fs-summary-tally { padding: 10px 12px; border-top: 1px solid @fs_line_soft; border-bottom: 1px solid @fs_line; }
+.fs-summary .fs-figure { font-size: 17px; }
+.fs-summary .fs-ink-2 { color: @fs_ink_2; }
+.fs-summary-band { margin: 8px 12px 0; border: 1px solid @fs_line; border-radius: 4px; font-size: 12px; }
+.fs-summary-heading { padding: 8px 12px; font-size: 12px; }
+.fs-summary list { background: @fs_bg; }
+.fs-summary-row { min-height: 43px; padding: 0 12px; border: 0; border-top: 1px solid @fs_line_soft; border-radius: 0; }
+.fs-summary-row:hover { background: @fs_hover; }
+.fs-summary-row:focus { box-shadow: inset 0 1px @fs_sel, inset 0 -1px @fs_sel; }
+.fs-summary-row .fs-data { font-size: 12px; }
+.fs-summary-empty { padding: 12px 16px; }
+.fs-summary-foot { padding: 8px 12px; border-top: 1px solid @fs_line; }
+.fs-summary-primary { border-color: @fs_ink_2; color: @fs_ink; }
 )CSS";
 
 struct Palette {
@@ -537,6 +556,7 @@ class MainWindow::Impl : public sigc::trackable {
         Glib::RefPtr<Gtk::ListStore> model;
         std::unordered_map<std::string, Gtk::TreeModel::iterator> rows;
         std::optional<std::string> pending_selection;
+        core::EventPtr pending_change;
         Gtk::TreeView *tree = nullptr;
         std::unique_ptr<Gtk::Menu> menu;
         Gtk::Stack *state = nullptr;
@@ -545,7 +565,8 @@ class MainWindow::Impl : public sigc::trackable {
         bool show_hidden = false;
     };
 
-    explicit Impl(MainWindow &window) : window_(window), dash_(60) {
+    Impl(MainWindow &window, const Glib::RefPtr<Gtk::Application> &application)
+        : window_(window), application_(application), dash_(60) {
         install_style();
         build_window();
         connect_models();
@@ -562,10 +583,18 @@ class MainWindow::Impl : public sigc::trackable {
             const auto root = watcher_->add_root(nav::home(), mon::WatchMode::RECURSIVE);
             if (!root.ok()) {
                 show_band("⚠ 감시를 시작할 수 없습니다", false);
+                watch_start_failed_ = true;
             }
         } else {
             show_band("⚠ 감시 기능을 사용할 수 없습니다", false);
+            watch_start_failed_ = true;
         }
+        tray_ = std::make_unique<Tray>(sigc::mem_fun(*this, &Impl::on_tray_action), [this] {
+            if (held_for_tray_) {
+                window_.present();
+            }
+        });
+        update_tray();
         update_metrics();
         metrics_timer_ = Glib::signal_timeout().connect_seconds(
             [this] {
@@ -610,6 +639,9 @@ class MainWindow::Impl : public sigc::trackable {
         if (history_) {
             history_->shutdown();
         }
+        summary_.reset();
+        tray_.reset();
+        release_tray_hold();
         save_window_state();
         for (auto &chart_window : chart_windows_) {
             chart_window->hide();
@@ -656,7 +688,22 @@ class MainWindow::Impl : public sigc::trackable {
         window_.set_size_request(1024, 640);
         window_.add_events(Gdk::KEY_PRESS_MASK);
         window_.signal_key_press_event().connect(sigc::mem_fun(*this, &Impl::on_key), false);
+        window_.signal_show().connect([this] {
+            if (!window_.get_application()) {
+                application_->add_window(window_);
+            }
+            release_tray_hold();
+        });
         window_.signal_delete_event().connect([this](GdkEventAny *) {
+            if (tray_ && tray_->connected()) {
+                if (!held_for_tray_) {
+                    application_->hold();
+                    held_for_tray_ = true;
+                }
+                save_window_state();
+                window_.hide();
+                return true;
+            }
             shutdown();
             return false;
         });
@@ -869,7 +916,10 @@ class MainWindow::Impl : public sigc::trackable {
                     watcher_->add_root(current_tab()->history.current(), mon::WatchMode::RECURSIVE);
                 if (!result.ok()) {
                     show_band("⚠ 감시를 시작할 수 없습니다", false);
+                } else {
+                    watch_start_failed_ = false;
                 }
+                update_tray();
             }
         });
         band_box_->pack_start(*watch_start_, false, false);
@@ -1348,6 +1398,8 @@ class MainWindow::Impl : public sigc::trackable {
             return;
         }
         if (push) {
+            tab->pending_change.reset();
+            tab->pending_selection.reset();
             tab->pending_history = tab->history;
             tab->pending_history->push(core::canonicalize(path));
         }
@@ -1386,6 +1438,7 @@ class MainWindow::Impl : public sigc::trackable {
                                               : "error");
             tab->pending_history.reset();
             tab->pending_selection.reset();
+            tab->pending_change.reset();
             if (current_tab() == tab) {
                 update_navigation(*tab);
                 update_status();
@@ -1421,6 +1474,9 @@ class MainWindow::Impl : public sigc::trackable {
         if (tab->pending_selection) {
             select_file(*tab, *tab->pending_selection);
             tab->pending_selection.reset();
+        }
+        if (auto change = std::exchange(tab->pending_change, {}); change && current_tab() == tab) {
+            focus_change(*tab, *change);
         }
         if (current_tab() == tab) {
             update_navigation(*tab);
@@ -2002,6 +2058,13 @@ class MainWindow::Impl : public sigc::trackable {
             history_->record_events(events);
         }
         for (const auto &event : events) {
+            if (event->kind == core::EventKind::OVERFLOW) {
+                begin_overflow();
+            } else if (event->kind == core::EventKind::RESYNC_DONE) {
+                overflow_state_ = TrayState::RESYNCED;
+                overflow_notice_ = "⚠ " + format_time(event->observed_at_us, false) +
+                                   " 대기열이 넘쳐 다시 검사해 맞췄습니다";
+            }
             log_rows_.push_front({event, format_time(event->observed_at_us, true),
                                   event_label(event->kind),
                                   format_signed_delta(event->size_delta.value_or(0))});
@@ -2026,6 +2089,7 @@ class MainWindow::Impl : public sigc::trackable {
         panel_->update_events(events);
         update_counts();
         update_metrics();
+        update_tray();
         chart_->queue_draw();
         for (CandleChart *chart : detached_charts_) {
             chart->queue_draw();
@@ -2043,22 +2107,12 @@ class MainWindow::Impl : public sigc::trackable {
         const int direction = (*row)[file_columns_.tick_direction];
         const std::int64_t start = (*row)[file_columns_.tick_start];
         const auto elapsed = g_get_monotonic_time() - start;
-        const bool motion = Gtk::Settings::get_default()->property_gtk_enable_animations();
         text.property_cell_background_set() = false;
-        if (stale || direction == 0 || elapsed >= (motion ? 13600000 : 12000000) ||
-            tab->tree->get_selection()->is_selected(row)) {
-            return;
+        if (!stale && !tab->tree->get_selection()->is_selected(row)) {
+            if (const auto color = tick_color(direction, elapsed)) {
+                text.property_cell_background_rgba() = *color;
+            }
         }
-        Gdk::RGBA color(direction > 0 ? "#f0525a" : "#4d9bff");
-        double alpha = 0.11;
-        if (motion && elapsed < 600000) {
-            alpha += ((direction > 0 ? 0.42 : 0.40) - alpha) *
-                     std::pow(2.0, -10.0 * static_cast<double>(elapsed) / 600000.0);
-        } else if (motion && elapsed > 12000000) {
-            alpha *= 1.0 - static_cast<double>(elapsed - 12000000) / 1600000.0;
-        }
-        color.set_alpha(alpha);
-        text.property_cell_background_rgba() = color;
     }
 
     void mark_tick(const Gtk::TreeModel::Row &row, int direction) {
@@ -2097,6 +2151,9 @@ class MainWindow::Impl : public sigc::trackable {
             tab->tree->queue_draw();
         }
         log_tree_->queue_draw();
+        if (summary_ && summary_->get_visible()) {
+            summary_->redraw_changes();
+        }
         return g_get_monotonic_time() - last_tick_ < 13600000;
     }
 
@@ -2226,6 +2283,9 @@ class MainWindow::Impl : public sigc::trackable {
 
     void on_watch_state(const mon::WatchInfo &info, const std::optional<core::Error> &) {
         auto &previous = watch_states_[info.id];
+        const bool resumed =
+            previous == mon::WatchState::PAUSED &&
+            (info.state == mon::WatchState::ACTIVE || info.state == mon::WatchState::DEGRADED);
         if (history_ &&
             (info.state == mon::WatchState::ACTIVE || info.state == mon::WatchState::DEGRADED) &&
             (previous == mon::WatchState::REGISTERING || previous == mon::WatchState::RESYNCING ||
@@ -2255,9 +2315,25 @@ class MainWindow::Impl : public sigc::trackable {
                                  g_get_real_time());
             update_watch_band();
         } else if (info.state == mon::WatchState::RESYNCING) {
+            begin_overflow();
             show_band("대기열이 넘쳐 다시 검사하고 있습니다", true);
         }
+        if (resumed) {
+            for (auto &tab : tabs_) {
+                if (tab->pending_history ||
+                    watcher_->find_root(tab->history.current()) != info.id) {
+                    continue;
+                }
+                const auto selected = tab->tree->get_selection()->get_selected_rows();
+                if (selected.size() == 1) {
+                    const auto row = tab->model->get_iter(selected.front());
+                    tab->pending_selection = (*row)[file_columns_.path];
+                }
+                load_tab(*tab);
+            }
+        }
         update_metrics();
+        update_tray();
     }
 
     void update_watch_band() {
@@ -2379,8 +2455,8 @@ class MainWindow::Impl : public sigc::trackable {
         }
         if (const auto directory = nav::parent(path_key);
             directory && *directory != tab->history.current()) {
-            tab->pending_selection = path_key;
             navigate(*directory, true);
+            tab->pending_selection = path_key;
         }
     }
 
@@ -2393,6 +2469,142 @@ class MainWindow::Impl : public sigc::trackable {
         tab.tree->get_selection()->select(row->second);
         tab.tree->scroll_to_row(Gtk::TreeModel::Path(row->second));
         return true;
+    }
+
+    void release_tray_hold() {
+        if (std::exchange(held_for_tray_, false)) {
+            application_->release();
+        }
+    }
+
+    bool paused() const { return watcher_ && watcher_->paused(); }
+
+    std::uint32_t recent_rate() const {
+        return paused() ? 0 : dash_.events_last_minute(g_get_real_time());
+    }
+
+    void begin_overflow() {
+        if (overflow_state_ != TrayState::RESYNCING) {
+            overflow_acknowledged_ = false;
+            overflow_state_ = TrayState::RESYNCING;
+            overflow_notice_ = "⚠ 대기열이 넘쳐 다시 검사하고 있습니다";
+        }
+    }
+
+    void update_tray() {
+        auto roots = watcher_ ? watcher_->list_roots() : std::vector<mon::WatchInfo>{};
+        roots.erase(
+            std::remove_if(roots.begin(), roots.end(),
+                           [](const auto &root) { return root.state == mon::WatchState::STOPPED; }),
+            roots.end());
+        const bool error = watch_start_failed_ || !deleted_roots_.empty() ||
+                           std::any_of(roots.begin(), roots.end(), [](const auto &root) {
+                               return root.state == mon::WatchState::ERROR ||
+                                      (root.state == mon::WatchState::DEGRADED &&
+                                       root.reason != mon::WatchReason::OVERFLOW);
+                           });
+        auto state = overflow_acknowledged_ ? TrayState::ACTIVE : overflow_state_;
+        if (paused()) {
+            state = TrayState::PAUSED;
+        } else if (error) {
+            state = TrayState::ERROR;
+        }
+        std::vector<core::EventPtr> changes;
+        for (const auto &record : log_rows_) {
+            if (record.event->path.empty() || record.event->kind == core::EventKind::RESYNC_DONE ||
+                record.event->kind == core::EventKind::UNMOUNT) {
+                continue;
+            }
+            changes.push_back(record.event);
+            if (changes.size() == 5) {
+                break;
+            }
+        }
+        const bool can_pause = static_cast<bool>(watcher_);
+        tray_->update(state, tray_items(state, roots, changes, can_pause));
+        if (summary_) {
+            const auto notice = error ? "⚠ 감시 중 오류가 발생했습니다" : overflow_notice_;
+            summary_->update(state, roots, dash_.counts(), recent_rate(), notice, changes,
+                             can_pause);
+        }
+    }
+
+    void on_tray_action(TrayAction action, const core::EventPtr &event) {
+        if (shutdown_) {
+            return;
+        }
+        switch (action) {
+        case TrayAction::SUMMARY:
+            if (!summary_) {
+                summary_ =
+                    std::make_unique<SummaryWindow>(sigc::mem_fun(*this, &Impl::on_tray_action));
+            }
+            overflow_acknowledged_ = true;
+            update_tray();
+            summary_->open();
+            break;
+        case TrayAction::CHANGE:
+        case TrayAction::MAIN:
+        case TrayAction::FOLDERS:
+            window_.present();
+            if (summary_) {
+                summary_->hide();
+            }
+            if (event) {
+                open_recent(event);
+            }
+            break;
+        case TrayAction::PAUSE:
+            if (watcher_) {
+                const bool pause = !paused();
+                if (pause) {
+                    watcher_->pause();
+                } else {
+                    watcher_->resume();
+                }
+                if (history_) {
+                    history_->note_pause(pause);
+                }
+                update_tray();
+                update_metrics();
+            }
+            break;
+        case TrayAction::QUIT:
+            application_->quit();
+            break;
+        case TrayAction::INFO:
+        case TrayAction::SEPARATOR:
+            break;
+        }
+    }
+
+    void open_recent(const core::EventPtr &event) {
+        auto *tab = current_tab();
+        const auto directory = nav::parent(event->path);
+        if (!tab || !directory) {
+            return;
+        }
+        panel_toggle_->set_active(true);
+        const auto name = basename(event->path);
+        const bool reveal_hidden = !tab->show_hidden && !name.empty() && name.front() == '.';
+        tab->show_hidden = tab->show_hidden || reveal_hidden;
+        if (*directory != tab->history.current() || reveal_hidden || tab->pending_history) {
+            navigate(*directory, true);
+            tab->pending_change = event;
+            return;
+        }
+        focus_change(*tab, *event);
+    }
+
+    void focus_change(Tab &tab, const core::Event &event) {
+        const bool deleted = event.kind == core::EventKind::DELETE ||
+                             event.kind == core::EventKind::MOVED_OUT ||
+                             event.kind == core::EventKind::DELETE_SELF;
+        if (!select_file(tab, event.path)) {
+            tab.tree->get_selection()->unselect_all();
+        }
+        panel_->set_target(
+            {event.path, event.is_dir, deleted, event_label(event.kind), event.observed_at_us});
     }
 
     void update_counts() {
@@ -2414,12 +2626,14 @@ class MainWindow::Impl : public sigc::trackable {
         const std::size_t roots = watcher_ ? watcher_->list_roots().size() : 0;
         const auto latency = dash_.latency_p95_ns();
         std::ostringstream text;
-        text << "감시 경로 " << roots << "   최근 1분 "
-             << dash_.events_last_minute(g_get_real_time());
+        text << "감시 경로 " << roots << "   최근 1분 " << recent_rate();
         if (latency.has_value()) {
             text << "   반영 지연 P95 " << latency.value() / 1000000 << "ms";
         }
         metrics_->set_text(text.str());
+        if (summary_ && summary_->get_visible()) {
+            summary_->update_rate(recent_rate());
+        }
     }
 
     void update_status() {
@@ -2458,6 +2672,7 @@ class MainWindow::Impl : public sigc::trackable {
     }
 
     MainWindow &window_;
+    Glib::RefPtr<Gtk::Application> application_;
     bool shutdown_ = false;
     Gtk::Box *root_ = nullptr;
     Gtk::HeaderBar *header_ = nullptr;
@@ -2549,6 +2764,13 @@ class MainWindow::Impl : public sigc::trackable {
     std::unordered_map<job::JobId, std::function<void(job::JobState)>> editor_jobs_;
     std::vector<std::unique_ptr<Gtk::Window>> chart_windows_;
     std::vector<CandleChart *> detached_charts_;
+    std::unique_ptr<Tray> tray_;
+    std::unique_ptr<SummaryWindow> summary_;
+    bool held_for_tray_ = false;
+    bool watch_start_failed_ = false;
+    bool overflow_acknowledged_ = false;
+    TrayState overflow_state_ = TrayState::ACTIVE;
+    std::string overflow_notice_;
 };
 
 core::Result<std::unique_ptr<MainWindow>>
@@ -2563,7 +2785,7 @@ MainWindow::create(const Glib::RefPtr<Gtk::Application> &app) {
 }
 
 MainWindow::MainWindow(const Glib::RefPtr<Gtk::Application> &app)
-    : Gtk::ApplicationWindow(app), impl_(std::make_unique<Impl>(*this)) {}
+    : Gtk::ApplicationWindow(app), impl_(std::make_unique<Impl>(*this, app)) {}
 
 MainWindow::~MainWindow() { shutdown(); }
 

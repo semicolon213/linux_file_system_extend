@@ -17,7 +17,12 @@ run_suite() {
         python3 -B "$(dirname "$0")/$script.py" "$app" "$directory"
 }
 
-if [[ "${2:-}" != history ]]; then
-    run_suite interaction "$1"
-fi
-run_suite history_interaction "$1"
+case "${2:-}" in
+    tray) run_suite tray_interaction "$1" ;;
+    history) run_suite history_interaction "$1" ;;
+    *)
+        run_suite interaction "$1"
+        run_suite history_interaction "$1"
+        run_suite tray_interaction "$1"
+        ;;
+esac

@@ -1,0 +1,5 @@
+add_executable(test_tray test_tray.cpp)
+target_link_libraries(test_tray PRIVATE filescope_ui)
+filescope_configure_target(test_tray)
+filescope_add_test(test_tray test_tray)
+set_tests_properties(test_tray PROPERTIES LABELS unit)
