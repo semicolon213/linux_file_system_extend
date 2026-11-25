@@ -313,16 +313,14 @@ class CandleChart final : public Gtk::DrawingArea {
         if (minimum == UINT64_MAX) {
             minimum = 0;
         }
-        if (maximum <= minimum) {
-            maximum = minimum + 1;
-        }
         const double slot = plot_width / 30.0;
         const double body_width = std::clamp(slot * 0.56, 3.0, 12.0);
         const std::size_t first = 30U - candles.size();
         const auto price_y = [&](std::uint64_t value) {
             const double offset =
                 static_cast<double>(std::clamp(value, minimum, maximum) - minimum);
-            return kTop + price_height * (1.0 - offset / static_cast<double>(maximum - minimum));
+            const double range = static_cast<double>(maximum - minimum);
+            return kTop + price_height * (range > 0.0 ? 1.0 - offset / range : 0.5);
         };
 
         for (std::size_t index = 0; index < candles.size(); ++index) {
@@ -382,25 +380,48 @@ class CandleChart final : public Gtk::DrawingArea {
         }
 
         context->set_source_rgb(Palette::kDimR, Palette::kDimG, Palette::kDimB);
+        context->select_font_face("monospace", Cairo::FONT_SLANT_NORMAL, Cairo::FONT_WEIGHT_NORMAL);
         context->set_font_size(11.0);
+        const auto axis_label = [](std::uint64_t bytes) {
+            constexpr std::uint64_t kKB = 1024;
+            constexpr std::uint64_t kMB = kKB * kKB;
+            std::ostringstream label;
+            label << std::fixed;
+            if (bytes >= kMB) {
+                label << std::setprecision(3) << static_cast<double>(bytes) / kMB << " MB";
+            } else if (bytes >= kKB) {
+                label << std::setprecision(1) << static_cast<double>(bytes) / kKB << " KB";
+            } else {
+                label << bytes << " B";
+            }
+            return label.str();
+        };
+        const auto &last = candles.back();
+        const double current_y = price_y(last.close);
+        constexpr double kLabelHeight = 18.0;
         for (int line = 0; line < 4; ++line) {
-            const auto value = maximum - (maximum - minimum) / 3U * static_cast<unsigned>(line);
-            std::ostringstream axis;
-            axis << std::fixed << std::setprecision(3) << static_cast<double>(value) / 1000000.0
-                 << " MB";
-            context->move_to(kLeft + plot_width + 8.0,
-                             kTop + price_height * static_cast<double>(line) / 3.0 + 4.0);
-            context->show_text(axis.str());
+            const double y = kTop + price_height * static_cast<double>(line) / 3.0;
+            if ((last.level_known && std::abs(y - current_y) < kLabelHeight) ||
+                (maximum == minimum && line != 0)) {
+                continue;
+            }
+            const auto step = static_cast<unsigned>(line);
+            const auto range = maximum - minimum;
+            const auto value = maximum - (range / 3U * step + range % 3U * step / 3U);
+            context->move_to(kLeft + plot_width + 8.0, y + 4.0);
+            context->show_text(axis_label(value));
         }
-        if (candles.back().level_known) {
-            const double y = price_y(candles.back().close);
+        if (last.level_known) {
             context->set_source_rgb(Palette::kInkR, Palette::kInkG, Palette::kInkB);
-            context->move_to(kLeft, y);
-            context->line_to(kLeft + plot_width, y);
+            context->move_to(kLeft, current_y);
+            context->line_to(kLeft + plot_width, current_y);
             context->stroke();
-            const auto label = format_bytes(candles.back().close);
-            context->move_to(kLeft + plot_width + 8.0, std::max(kTop + 14.0, y - 6.0));
-            context->show_text(label);
+            context->rectangle(kLeft + plot_width + 2.0, current_y - kLabelHeight / 2.0,
+                               kRight - 4.0, kLabelHeight);
+            context->fill();
+            context->set_source_rgb(Palette::kBgR, Palette::kBgG, Palette::kBgB);
+            context->move_to(kLeft + plot_width + 8.0, current_y + 4.0);
+            context->show_text(axis_label(last.close));
         }
         return true;
     }
@@ -825,6 +846,7 @@ class MainWindow::Impl : public sigc::trackable {
 
     void build_bottom() {
         bottom_ = Gtk::make_managed<Gtk::Box>(Gtk::ORIENTATION_HORIZONTAL);
+        bottom_->set_vexpand(false);
         bottom_->set_size_request(-1, 232);
         add_class(*bottom_, "fs-bottom");
         auto *left = Gtk::make_managed<Gtk::Box>(Gtk::ORIENTATION_VERTICAL);
@@ -851,6 +873,7 @@ class MainWindow::Impl : public sigc::trackable {
         }
         log_search_ = Gtk::make_managed<Gtk::SearchEntry>();
         log_search_->set_placeholder_text("경로 거르기");
+        set_accessible(*log_search_, "경로 거르기");
         log_search_->set_size_request(200, 26);
         log_search_->signal_search_changed().connect(sigc::mem_fun(*this, &Impl::rebuild_log));
         toolbar->pack_end(*log_search_, false, false, 8);
@@ -872,6 +895,7 @@ class MainWindow::Impl : public sigc::trackable {
         bottom_switcher_->set_stack(*bottom_stack_);
         log_model_ = Gtk::ListStore::create(log_columns_);
         log_tree_ = Gtk::make_managed<Gtk::TreeView>(log_model_);
+        set_accessible(*log_tree_, "이벤트 로그 목록");
         log_tree_->set_headers_visible(false);
         log_tree_->append_column("시각", log_columns_.time);
         log_tree_->append_column("이벤트", log_columns_.event);
@@ -934,20 +958,20 @@ class MainWindow::Impl : public sigc::trackable {
         auto *grid = Gtk::make_managed<Gtk::Grid>();
         grid->set_row_spacing(8);
         grid->set_column_spacing(12);
-        const std::array<std::pair<const char *, const char *>, 5> labels{{
-            {"● 생성", "fs-up"},
-            {"▲ 수정", "fs-up"},
-            {"✕ 삭제", "fs-down"},
-            {"→ 이동", "fs-dim"},
-            {"◦ 속성", "fs-dim"},
+        const std::array<const char *, 5> labels{{
+            "● 생성",
+            "▲ 수정",
+            "✕ 삭제",
+            "→ 이동",
+            "◦ 속성",
         }};
         for (std::size_t index = 0; index < labels.size(); ++index) {
-            auto *label = Gtk::make_managed<Gtk::Label>(labels[index].first);
+            auto *label = Gtk::make_managed<Gtk::Label>(labels[index]);
             label->set_xalign(0.0F);
             auto *value = Gtk::make_managed<Gtk::Label>("0");
             value->set_xalign(0.0F);
             add_class(*value, "fs-figure");
-            add_class(*value, labels[index].second);
+            add_class(*value, "fs-dim");
             grid->attach(*label, static_cast<int>(index % 2U) * 2, static_cast<int>(index / 2U), 1,
                          1);
             grid->attach(*value, static_cast<int>(index % 2U) * 2 + 1, static_cast<int>(index / 2U),
@@ -998,7 +1022,7 @@ class MainWindow::Impl : public sigc::trackable {
     void rebuild_bookmarks() {
         const auto children = bookmarks_box_->get_children();
         for (Gtk::Widget *child : children) {
-            bookmarks_box_->remove(*child);
+            gtk_widget_destroy(child->gobj());
         }
         for (const auto &path : bookmarks_.list()) {
             auto *row = Gtk::make_managed<Gtk::ListBoxRow>();
@@ -1288,7 +1312,7 @@ class MainWindow::Impl : public sigc::trackable {
         up_->set_sensitive(nav::parent(tab.history.current()).has_value());
         const auto children = breadcrumb_->get_children();
         for (Gtk::Widget *child : children) {
-            breadcrumb_->remove(*child);
+            gtk_widget_destroy(child->gobj());
         }
         const auto crumbs = nav::breadcrumb(tab.history.current());
         for (std::size_t index = 0; index < crumbs.size(); ++index) {
@@ -2159,11 +2183,17 @@ class MainWindow::Impl : public sigc::trackable {
 
     void update_counts() {
         const dash::Counts counts = dash_.counts();
-        count_labels_[0]->set_text(std::to_string(counts.creates));
-        count_labels_[1]->set_text(std::to_string(counts.modifies));
-        count_labels_[2]->set_text(std::to_string(counts.deletes));
-        count_labels_[3]->set_text(std::to_string(counts.moves));
-        count_labels_[4]->set_text(std::to_string(counts.attribs));
+        const std::array values{counts.creates, counts.modifies, counts.deletes, counts.moves,
+                                counts.attribs};
+        const std::array colors{"fs-up", "fs-up", "fs-down", "fs-dim", "fs-dim"};
+        for (std::size_t index = 0; index < values.size(); ++index) {
+            auto *label = count_labels_[index];
+            label->set_text(std::to_string(values[index]));
+            if (values[index] > 0) {
+                label->get_style_context()->remove_class("fs-dim");
+                add_class(*label, colors[index]);
+            }
+        }
     }
 
     void update_metrics() {
