@@ -837,6 +837,20 @@ class MainWindow::Impl : public sigc::trackable {
         band_box_->pack_start(*stale_parent_, false, false);
         band_->add(*band_box_);
         right->pack_start(*band_, false, false);
+        job_result_ = Gtk::make_managed<Gtk::Revealer>();
+        auto *job_result_row = Gtk::make_managed<Gtk::Box>(Gtk::ORIENTATION_HORIZONTAL, 8);
+        add_class(*job_result_row, "fs-band");
+        add_class(*job_result_row, "quiet");
+        job_result_label_ = Gtk::make_managed<Gtk::Label>();
+        job_result_label_->set_xalign(0.0F);
+        auto *dismiss_job_result = Gtk::make_managed<Gtk::Button>("확인");
+        set_accessible(*dismiss_job_result, "작업 결과 닫기");
+        dismiss_job_result->signal_clicked().connect(
+            [this] { job_result_->set_reveal_child(false); });
+        job_result_row->pack_start(*job_result_label_, true, true);
+        job_result_row->pack_end(*dismiss_job_result, false, false);
+        job_result_->add(*job_result_row);
+        right->pack_start(*job_result_, false, false);
         notebook_ = Gtk::make_managed<Gtk::Notebook>();
         notebook_->set_scrollable(true);
         notebook_->signal_switch_page().connect(sigc::mem_fun(*this, &Impl::switch_tab));
@@ -1729,6 +1743,7 @@ class MainWindow::Impl : public sigc::trackable {
             return;
         }
         file_jobs_.emplace(result.value(), title);
+        job_result_->set_reveal_child(false);
         if (!active_job_) {
             show_next_job();
         }
@@ -1798,7 +1813,9 @@ class MainWindow::Impl : public sigc::trackable {
                 std::count_if(results.begin(), results.end(), [](const job::ItemResult &item) {
                     return !item.error && !item.skipped;
                 });
-            show_band("작업을 취소했습니다 · 완료된 항목 " + std::to_string(complete) + "개", true);
+            job_result_label_->set_text("작업을 취소했습니다 · 완료된 항목 " +
+                                        std::to_string(complete) + "개");
+            job_result_->set_reveal_child(true);
         } else {
             toast_label_->set_text("파일 작업을 완료했습니다");
             toast_->set_reveal_child(true);
@@ -2278,6 +2295,8 @@ class MainWindow::Impl : public sigc::trackable {
     Gtk::Revealer *band_ = nullptr;
     Gtk::Box *band_box_ = nullptr;
     Gtk::Label *band_label_ = nullptr;
+    Gtk::Revealer *job_result_ = nullptr;
+    Gtk::Label *job_result_label_ = nullptr;
     Gtk::Button *watch_start_ = nullptr;
     Gtk::Button *stale_parent_ = nullptr;
     Gtk::Notebook *notebook_ = nullptr;

@@ -262,6 +262,9 @@ def exercise(app, home, fixture):
     job_target.mkdir()
     (job_target / "existing").touch()
     navigate(job_target)
+    file("existing")
+    (job_target / "reload-marker").touch()
+    assert row(files(), "reload-marker") is None
     focus(files())
     key("v", "Control_L")
     progress = wait("copy progress bar appears", lambda: next(
@@ -270,6 +273,16 @@ def exercise(app, home, fixture):
     cancel = find(progress.get_parent(), "취소", Atspi.Role.PUSH_BUTTON)
     assert cancel.get_action_iface().do_action(0)
     wait("copy progress bar hides after cancellation", lambda: not showing(progress))
+    file("reload-marker")
+    find(app, "이 폴더를 감시하지 않습니다")
+    button("감시 시작")
+    result = wait("cancellation result survives the reload", lambda: next(
+        (n for n in descendants(app) if n.get_role() == Atspi.Role.LABEL
+         and n.get_name().startswith("작업을 취소했습니다 · 완료된 항목 ") and showing(n)),
+        None))
+    assert button("작업 결과 닫기").get_action_iface().do_action(0)
+    wait("cancellation result can be dismissed", lambda: not showing(result))
+    find(app, "이 폴더를 감시하지 않습니다")
     assert sum(1 for _ in (job_target / "job-source").glob("*")) < JOB_ITEMS
     assert sum(1 for _ in (fixture / "job-origin/job-source").iterdir()) == JOB_ITEMS
     print("PASS copy progress and cancellation", flush=True)
