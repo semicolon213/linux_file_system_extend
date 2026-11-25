@@ -2,3 +2,5 @@
 leak:libglib-2.0.so
 leak:libgobject-2.0.so
 leak:libgio-2.0.so
+# Fontconfig caches reported at exit by a standalone GTK label window.
+leak:libfontconfig.so.1

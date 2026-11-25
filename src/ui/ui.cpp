@@ -640,7 +640,15 @@ class MainWindow::Impl : public sigc::trackable {
         up_->signal_clicked().connect(sigc::mem_fun(*this, &Impl::go_up));
 
         breadcrumb_ = Gtk::make_managed<Gtk::Box>(Gtk::ORIENTATION_HORIZONTAL, 4);
-        header_->set_custom_title(*breadcrumb_);
+        auto *breadcrumb_view = Gtk::make_managed<Gtk::ScrolledWindow>();
+        breadcrumb_view->set_policy(Gtk::POLICY_EXTERNAL, Gtk::POLICY_NEVER);
+        breadcrumb_view->set_propagate_natural_width(true);
+        breadcrumb_view->add(*breadcrumb_);
+        set_accessible(*breadcrumb_view, "현재 경로");
+        header_->set_custom_title(*breadcrumb_view);
+        breadcrumb_scroll_ = breadcrumb_view->get_hadjustment();
+        breadcrumb_scroll_->signal_changed().connect(
+            sigc::mem_fun(*this, &Impl::show_breadcrumb_end));
         search_ = Gtk::make_managed<Gtk::SearchEntry>();
         // design-pending: U-6
         completion_ = Gtk::EntryCompletion::create();
@@ -1295,6 +1303,7 @@ class MainWindow::Impl : public sigc::trackable {
             breadcrumb_->pack_start(*button, false, false);
         }
         breadcrumb_->show_all();
+        show_breadcrumb_end();
         search_->set_text(display_path(tab.history.current()));
         const int page = notebook_->get_current_page();
         if (page >= 0) {
@@ -1303,6 +1312,11 @@ class MainWindow::Impl : public sigc::trackable {
                 label->set_text(display_path(basename(tab.history.current())));
             }
         }
+    }
+
+    void show_breadcrumb_end() {
+        breadcrumb_scroll_->set_value(breadcrumb_scroll_->get_upper() -
+                                      breadcrumb_scroll_->get_page_size());
     }
 
     void activate_search() {
@@ -2206,6 +2220,7 @@ class MainWindow::Impl : public sigc::trackable {
     Gtk::Button *forward_ = nullptr;
     Gtk::Button *up_ = nullptr;
     Gtk::Box *breadcrumb_ = nullptr;
+    Glib::RefPtr<Gtk::Adjustment> breadcrumb_scroll_;
     Gtk::SearchEntry *search_ = nullptr;
     struct CompletionColumns : Gtk::TreeModel::ColumnRecord {
         CompletionColumns() { add(path); }
