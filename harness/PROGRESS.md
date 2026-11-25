@@ -2,13 +2,13 @@
 
 Coordinator가 갱신한다. 작업별 ID, 담당, 기준 SHA, 상태, 차단 사유, QA 증거를 기록한다. 작업 상세 상태는 harness/TASKS.md 상태 요약.
 
-## 1. 현재 상태 (2026-11-24)
+## 1. 현재 상태 (2026-11-25)
 
 | 단계 | 상태 |
 |---|---|
 | 요구사항·설계 계약 | R1 계약 승인(ARCH-001, 8615d98). 사용자 결정 U-1~U-9 기록 완료(§3 결정 기록). C++17 + gtkmm-3.0 판으로 갱신(ADR-0007 승인, ADR-0008 제안, 2026-11-24) |
 | 디자인 (메인 창, 트레이) | APPROVED (사용자 확정, 커밋 6d621d5). 루트 PRODUCT.md·DESIGN.md, docs/design/prototype. 언어 변경과 무관하게 유효 |
-| 빌드·테스트 하네스 | R0-002 C++ 전환 VERIFY (b7ca5d3) |
+| 빌드·테스트 하네스 | R0-002 C++ 전환 APPROVED (b7ca5d3) |
 | R0-002, R1-T01~T07 | APPROVED (R1 묶음 QA PASS, 8c469a9, docs/qa/r1-qa-report.md). 실제 Ubuntu 수동 검증(보고서 끝 체크리스트 15항목)은 사용자 수행 대기 |
 | UI 및 고급 기능 (R2~) | PLANNED |
 
