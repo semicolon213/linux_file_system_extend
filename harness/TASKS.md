@@ -30,14 +30,14 @@
 | R1-T07 dash | APPROVED (08424c7, R1 QA PASS 8c469a9) | R1-T01 |
 | R2-T00 R1 QA Low 정리 (N1~N3) | VERIFY (7e980f5 병합, R2 묶음 QA 대기) | R1 APPROVED |
 | R2-T01 R2 빌드 기반 | VERIFY (4849475 병합, R2 묶음 QA 대기) | R1 APPROVED |
-| R2-T02 fs R2 보조 API | READY | R2 계약 승인, R2-T00 |
-| R2-T03 diff | READY | R2 계약 승인, R2-T01 |
-| R2-T04 his 저장소 | READY | ADR-0009 승인, R2-T01 |
-| R2-T05 his 자동 버전·복원 | BACKLOG | R2-T02, R2-T04 |
+| R2-T02 fs R2 보조 API | VERIFY (e81de30 병합, R2 묶음 QA 대기) | R2 계약 승인, R2-T00 |
+| R2-T03 diff | VERIFY (35111c2 병합, R2 묶음 QA 대기) | R2 계약 승인, R2-T01 |
+| R2-T04 his 저장소 | VERIFY (a0a85b1 병합, R2 묶음 QA 대기) | ADR-0009 승인, R2-T01 |
+| R2-T05 his 자동 버전·복원 | VERIFY (74fcebe 병합, R2 묶음 QA 대기) | R2-T02, R2-T04 |
 | R2-T06 mon 일시 정지 | VERIFY (82a7c77 병합, R2 묶음 QA 대기) | R2 계약 승인(완료) |
-| R2-T07 trash | BACKLOG | R2 계약 승인, R2-T01, R2-T02 |
-| R2-T08 search | READY | R2 계약 승인, R2-T01 |
-| R2-T09 ui 변경 내용 패널 | BACKLOG | R2-T00, R2-T03, R2-T05 |
+| R2-T07 trash | VERIFY (264d259 병합, R2 묶음 QA 대기) | R2 계약 승인, R2-T01, R2-T02 |
+| R2-T08 search | VERIFY (51cac30 병합, R2 묶음 QA 대기) | R2 계약 승인, R2-T01 |
+| R2-T09 ui 변경 내용 패널 | READY | R2-T00, R2-T03, R2-T05 |
 | R2-T10 ui 트레이·요약 창·일시 정지 | BACKLOG | R2-T06, R2-T09 |
 | R2-T11 ui 검색·휴지통·미리보기 | BACKLOG | R2-T07, R2-T08, R2-T10, U-10 시안 확정 |
 
@@ -397,7 +397,7 @@ R2 의존 순서: {R2-T00, R2-T01 병렬} → {R2-T02(T00 뒤), R2-T03, R2-T04, 
 ## R2-T05 his 자동 버전·복원
 
 - Task ID / 요구사항 ID: R2-T05 / HIS-005(자동 버전), HIS-011(버전 복원), HIS-012(삭제 복구), E09(스냅샷 없는 삭제)
-- 상태: READY (R2-T02·R2-T04 병합됨)
+- 상태: VERIFY (74fcebe 병합, R2 묶음 QA 대기)
 - 목표: 이벤트 §10 표의 처리(캡처 예약과 300ms 합치기, synthetic CREATE, 이동 계열), scan_root 기준 스냅샷(한도, 조회와 번갈아 처리), note_pause, `is_excluded`(DB §8), restore_async(PRE_RESTORE 캡처 → `fs::install_file`), recover_async, signal_version_added.
 - 제외 범위: 이름 추적(HIS-015), 다른 위치 복원, 디렉터리 스냅샷·복원(HIS-013/014), 화면.
 - 기준 브랜치 / SHA: R2-T04 통합 커밋(R2-T02 포함)
@@ -422,7 +422,7 @@ R2 의존 순서: {R2-T00, R2-T01 병렬} → {R2-T02(T00 뒤), R2-T03, R2-T04, 
 ## R2-T06 mon 일시 정지
 
 - Task ID / 요구사항 ID: R2-T06 / MON-022 (U-2 결정)
-- 상태: READY (R2 계약 승인 ad49d0b)
+- 상태: VERIFY (82a7c77 병합, R2 묶음 QA 대기)
 - 목표: `Watcher::pause/resume/paused`와 WatchState::PAUSED를 DESIGN 인터페이스 §4 "R2 추가", 상태 §1(R2 전이)대로 구현한다.
 - 제외 범위: 루트별 일시 정지, 일시 정지 중 이벤트 보관, 화면(R2-T10).
 - 기준 브랜치 / SHA: R2 계약 승인 커밋
@@ -444,7 +444,7 @@ R2 의존 순서: {R2-T00, R2-T01 병렬} → {R2-T02(T00 뒤), R2-T03, R2-T04, 
 ## R2-T07 trash
 
 - Task ID / 요구사항 ID: R2-T07 / TRASH-001, TRASH-002, TRASH-003, TRASH-005, TRASH-006
-- 상태: READY (R2-T01·R2-T02 병합됨)
+- 상태: VERIFY (264d259 병합, R2 묶음 QA 대기)
 - 목표: `src/trash`를 DESIGN 인터페이스 §11대로 구현한다(홈 휴지통 목록, 원위치 복원, 선택 삭제, 비우기).
 - 제외 범위: 다른 마운트 휴지통(E-13), 지정 위치 복원·복원 충돌 처리·자동 정리(TRASH-004/011/009, R3), 화면.
 - 기준 브랜치 / SHA: R2-T02 통합 커밋
@@ -490,7 +490,7 @@ R2 의존 순서: {R2-T00, R2-T01 병렬} → {R2-T02(T00 뒤), R2-T03, R2-T04, 
 ## R2-T09 ui 변경 내용 패널
 
 - Task ID / 요구사항 ID: R2-T09 / HIS-007, HIS-008, HIS-009, HIS-011, HIS-012의 화면, UI-012(패널 접기), 이벤트 §10 연결(mon → his)
-- 상태: BACKLOG (R2-T00·R2-T03·R2-T05 병합 후 READY)
+- 상태: READY (R2-T00·R2-T03·R2-T05 병합됨)
 - 목표: MainWindow가 `his::History`를 열고(실패해도 창은 뜸) 이벤트 §10대로 mon과 잇는다. 변경 내용 패널(머리, 요약 줄, 텍스트 줄 Diff, 이미지 나란히/겹쳐 밀기, 바이너리, 새 파일, 폴더, 삭제됨, 되돌리기 확인), "전체 이력" 버전 목록과 버전 선택 비교, 머리줄 패널 토글을 DESIGN 인터페이스 §7 "R2 추가"대로 만든다. `src/ui/CMakeLists.txt`에 diff·his 링크.
 - 시각 기준: 루트 DESIGN.md "Change-Detail Panel", "GTK3 구현 메모"(위젯 대응, §2 변경 내용 패널), docs/design/prototype/main-window.html 패널. 시안의 복합 문서(md·docx 블록) 표시는 R2에 없다: md는 줄 Diff, docx·odt는 바이너리 표시. 시안 없는 화면(전체 이력 목록, 이력 끔 표시)은 U-10.
 - 제외 범위: 트레이·요약 창·일시 정지(R2-T10), 검색·휴지통 화면(R2-T11), 단어 단위 문서 Diff(R3).
