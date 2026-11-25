@@ -1,0 +1,2 @@
+# The uninstrumented GLib pool and main context hand off queue nodes and wakeups.
+called_from_lib:libglib-2.0.so.0
