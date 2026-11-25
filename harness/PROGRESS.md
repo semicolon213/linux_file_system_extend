@@ -11,7 +11,7 @@ Coordinator가 갱신한다. 작업별 ID, 담당, 기준 SHA, 상태, 차단 �
 | 빌드·테스트 하네스 | R0-002 C++ 전환 APPROVED (b7ca5d3) |
 | R0-002, R1-T01~T07 | APPROVED (R1 묶음 QA PASS, 8c469a9, docs/qa/r1-qa-report.md). 실제 Ubuntu 수동 검증(보고서 끝 체크리스트 15항목)은 사용자 수행 대기 |
 | R2 계약 | 승인 (2026-11-25, Coordinator, ad49d0b): DESIGN R2 추가·DB 스키마, ARCHITECTURE R2 모듈, ADR-0009(제안), TESTING §8, TASKS R2-T00~T11. |
-| R2 작업 | R2-T00~T10 VERIFY(병합, 묶음 QA 대기). R2-T11·R2-F01 READY |
+| R2 작업 | R2-T00~T11·R2-F01 전부 VERIFY(병합). R2 묶음 독립 QA 진행 |
 | R3~ | PLANNED |
 
 ### 이력
@@ -37,6 +37,7 @@ Coordinator가 갱신한다. 작업별 ID, 담당, 기준 SHA, 상태, 차단 �
 - 2026-11-25: R2-T07(264d259), R2-T05(74fcebe) 병합. 병합 상태 게이트 직접 재실행(각각): verify·integration·stress·benchmark·ui-interaction 0, tsan 10/10. HIS-011 수용 조건을 DB §5.3 중복 생략에 맞춤(37a152b). 미검증: gedit·VS Code 실제 저장의 자동 버전(R2 QA·수동 점검 대상). TASKS 요약 표 R2 상태 갱신.
 - 2026-11-25: R2-T09(38c4cad) 병합. 병합 상태 게이트 직접 재실행: verify·integration·stress·benchmark·ui-interaction 0, tsan 10/10. 작업자 보고: GUI TSan(앱 실행) 종료 1, 배포판 GLib gdbus 스레드 malloc/free 경쟁이 기준 2a81905에서도 재현(억제 미추가, QA 기록 대상). 한글 글꼴 데스크톱 시각 확인 미실행.
 - 2026-11-25: R2-T10(cde40b1) 병합. 병합 상태 게이트 직접 재실행: verify·integration·stress·benchmark·ui-interaction 0, tsan 10/10. 작업자 보고: test_his_versions /his/versions/shutdown 간헐 실패(약 1/33, 기준 17411e6 재현) → R2-F01 등록(GCC preset 고정 포함). 실제 GNOME 트레이·Wayland/X11 위치 확인과 GUI TSan(GLib gdbus 보고) NOT_RUN.
+- 2026-11-26: R2-F01(f6b1cd2: his 종료 테스트 수정, CMakePresets g++ 고정), R2-T11(c08cce1) 병합. 병합 상태 게이트 직접 재실행(각각): verify·integration·stress·benchmark·ui-interaction 0, tsan 10/10. 루트 DESIGN.md 검색 진행 띠를 search 계약(진행 중 찾은 수만, 완료 시 폴더·접근 불가 수)에 맞춤. 작업자 보고 위험: 트레이 호스트 없는 Wayland ASan에서 libayatana-appindicator 읽기 오류(기준 재현) → R2 QA 판정 대상. R2 묶음 독립 QA 착수.
 
 ## 2. 요구사항 추적표
 

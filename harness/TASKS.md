@@ -39,8 +39,8 @@
 | R2-T08 search | VERIFY (51cac30 병합, R2 묶음 QA 대기) | R2 계약 승인, R2-T01 |
 | R2-T09 ui 변경 내용 패널 | VERIFY (38c4cad 병합, R2 묶음 QA 대기) | R2-T00, R2-T03, R2-T05 |
 | R2-T10 ui 트레이·요약 창·일시 정지 | VERIFY (cde40b1 병합, R2 묶음 QA 대기) | R2-T06, R2-T09 |
-| R2-T11 ui 검색·휴지통·미리보기 | READY | R2-T07, R2-T08, R2-T10, U-10 시안 확정 |
-| R2-F01 his 종료 테스트 간헐 실패, GCC 고정 | READY | R2-T05 |
+| R2-T11 ui 검색·휴지통·미리보기 | VERIFY (c08cce1 병합, R2 묶음 QA 대기) | R2-T07, R2-T08, R2-T10, U-10 시안 확정 |
+| R2-F01 his 종료 테스트 간헐 실패, GCC 고정 | VERIFY (f6b1cd2 병합, R2 묶음 QA 대기) | R2-T05 |
 
 의존 순서: R0-002 → R1-T01 → {R1-T02, R1-T04, R1-T05, R1-T07 병렬} → R1-T03(T02 필요) → R1-T06. 독립 QA는 R1 전체를 묶어 한 번 한다(R0-002 포함, PROGRESS 미결 사항 E-6).
 
@@ -545,7 +545,7 @@ R2 의존 순서: {R2-T00, R2-T01 병렬} → {R2-T02(T00 뒤), R2-T03, R2-T04, 
 ## R2-T11 ui 검색·휴지통·미리보기
 
 - Task ID / 요구사항 ID: R2-T11 / SRC-001, SRC-003, SRC-004, TRASH-001, TRASH-002, TRASH-003, TRASH-005, TRASH-006의 화면, PRE-001(텍스트 미리보기), PRE-003(텍스트 편집)
-- 상태: READY (R2-T07·T08·T10 병합, U-10·U-11 결정됨)
+- 상태: VERIFY (c08cce1 병합, R2 묶음 QA 대기)
 - 목표: DESIGN 인터페이스 §7 "R2 추가"의 검색 화면, 휴지통 화면, 텍스트 미리보기·편집 보강(UTF-8 검사, 읽기 전용 모드, 저장 충돌 선택)을 만든다. PRE-003은 R1 FS-005 편집기를 그대로 쓰고 새 편집기를 만들지 않는다. `src/ui/CMakeLists.txt`에 search·trash 링크.
 - 시각 기준: 머리줄 검색 칸과 사이드바 "휴지통"은 docs/design/prototype/main-window.html. 검색 결과·휴지통 목록·미리보기·저장 충돌 화면은 docs/design/prototype/r2-screens.html과 루트 DESIGN.md "R2 화면"(U-10 시안 확정).
 - 제외 범위: 내용·정규식 검색, 휴지통 검색·자동 정리, 코드 강조·이미지·PDF 미리보기(R3).
@@ -568,7 +568,7 @@ R2 의존 순서: {R2-T00, R2-T01 병렬} → {R2-T02(T00 뒤), R2-T03, R2-T04, 
 ## R2-F01 his 종료 테스트 간헐 실패, GCC 고정
 
 - Task ID / 요구사항 ID: R2-F01 / HIS-005 테스트 안정성, ENGINEERING 빌드(GCC 고정)
-- 상태: READY
+- 상태: VERIFY (f6b1cd2 병합, R2 묶음 QA 대기)
 - 목표: (1) `tests/integration/test_his_versions.cpp`의 `/his/versions/shutdown`이 약 33회 중 1회 실패한다(R2-T10 보고, 기준 17411e6에서 재현: `pending` 경로 버전 수 기대 0인데 baseline 스캔이 늦게 시작하면 pending 파일이 baseline에 들어감). 테스트가 스캔 시작이 아니라 baseline 완료(또는 pending 파일이 스캔 대상 밖임)를 확실히 보장하도록 고친다. 제품 코드 결함이면 근거를 보고하고 his 수정은 최소로 한다. (2) `CMakePresets.json`의 모든 configure preset에 `CMAKE_CXX_COMPILER=g++`를 고정한다(ENGINEERING 빌드 절, 사용자 결정 2026-11-25).
 - 허용 파일: `tests/integration/test_his_*.cpp`, `src/his/**`(결함일 때만), `CMakePresets.json`
 - 변경 금지: 다른 모듈, scripts, docs, harness, 억제 파일
