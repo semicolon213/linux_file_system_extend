@@ -107,25 +107,21 @@ def replace_text(node, value):
 
 
 def exercise(app, home, fixture):
-    address = find(app, "주소 입력 및 폴더 자동완성")
     breadcrumb = find(app, "현재 경로")
 
     def path_is(path):
-        try:
-            wait(f"address becomes {path}",
-                 lambda: Atspi.Text.get_text(address, 0, -1) == str(path)
-                 and named(breadcrumb, path.name, Atspi.Role.PUSH_BUTTON))
-        except AssertionError as error:
-            raise AssertionError(f"{error}, actual {Atspi.Text.get_text(address, 0, -1)}") from error
+        wait(f"breadcrumb shows {path}",
+             lambda: named(breadcrumb, path.name, Atspi.Role.PUSH_BUTTON))
 
     def navigate(path):
-        click(address)
+        key("l", "Control_L")
+        address = find(app, "주소 입력 및 폴더 자동완성")
         wait("address takes keyboard focus",
              lambda: address.get_state_set().contains(Atspi.StateType.FOCUSED))
         replace_text(address, path)
         key("Return")
         path_is(path)
-        key("Escape")
+        assert not named(app, "주소 입력 및 폴더 자동완성")
 
     def files():
         return find(app, "파일 목록")
@@ -248,11 +244,15 @@ def exercise(app, home, fixture):
     select("move.txt")
     key("e", "Control_L")
     editor = find(app, "파일 내용")
+    wait("editor is writable", lambda: editor.get_state_set().contains(Atspi.StateType.EDITABLE))
     (second / "move.txt").write_text("external update")
     replace_text(editor, "editor update")
-    click(button("저장"))
-    find(app, "⚠ 파일이 바뀌었거나 저장할 수 없습니다")
+    click(button("저장 (Ctrl+S)"))
+    find(app, "편집하는 동안 다른 프로그램이 이 파일을 바꿨습니다")
+    click(button("취소"))
+    wait("conflict prompt dismissed", lambda: not named(app, "다시 읽기"))
     assert (second / "move.txt").read_text() == "external update"
+    click(button("편집 취소"))
     print("PASS external edit conflict", flush=True)
 
     navigate(fixture / "job-origin")
@@ -445,9 +445,8 @@ def main():
 
     def restart(app):
         click(find(app, f"☆  {second}"))
-        address = find(app, "주소 입력 및 폴더 자동완성")
-        wait("persisted favorite opens second",
-             lambda: Atspi.Text.get_text(address, 0, -1) == str(second))
+        breadcrumb = find(app, "현재 경로")
+        find(breadcrumb, second.name, Atspi.Role.PUSH_BUTTON)
         close(app)
 
     run(binary, restart)

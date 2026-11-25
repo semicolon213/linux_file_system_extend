@@ -1,5 +1,10 @@
 #include "ui/change_panel.hpp"
 
+#include <gdk/gdkkeysyms.h>
+#include <giomm/appinfo.h>
+#include <sys/stat.h>
+#include <unordered_set>
+
 #include "core/path.hpp"
 #include "diff/diff.hpp"
 
@@ -334,20 +339,29 @@ std::string deletion_error(const core::Error &error) {
 
 class ChangePanel::Impl : public sigc::trackable {
   public:
-    Impl(Gtk::Box &owner, Notify notify, FolderEvents folder_events)
-        : owner_(owner), notify_(std::move(notify)), folder_events_(std::move(folder_events)) {
+    Impl(Gtk::Box &owner, job::JobQueue &queue, Notify notify, FolderEvents folder_events)
+        : owner_(owner), queue_(queue), notify_(std::move(notify)),
+          folder_events_(std::move(folder_events)) {
         owner_.get_accessible()->set_name("변경 내용");
         owner_.get_style_context()->add_class("fs-change-panel");
 
+        views_ = Gtk::make_managed<Gtk::Stack>();
+        views_->set_homogeneous(false);
+        owner_.pack_start(*views_, true, true);
+        auto *changes = Gtk::make_managed<Gtk::Box>(Gtk::ORIENTATION_VERTICAL);
+        views_->add(*changes, "changes");
         head_ = Gtk::make_managed<Gtk::Box>(Gtk::ORIENTATION_VERTICAL, 4);
         head_->get_style_context()->add_class("fs-change-head");
-        owner_.pack_start(*head_, false, false);
+        changes->pack_start(*head_, false, false);
         auto *scroll = Gtk::make_managed<Gtk::ScrolledWindow>();
         scroll->set_policy(Gtk::POLICY_NEVER, Gtk::POLICY_AUTOMATIC);
         body_ = Gtk::make_managed<Gtk::Box>(Gtk::ORIENTATION_VERTICAL, 8);
         body_->get_style_context()->add_class("fs-change-body");
         scroll->add(*body_);
-        owner_.pack_start(*scroll, true, true);
+        changes->pack_start(*scroll, true, true);
+        build_text();
+        changes->show_all();
+        views_->set_visible_child("changes");
         refresh();
     }
 
@@ -358,10 +372,14 @@ class ChangePanel::Impl : public sigc::trackable {
     }
 
     void set_target(Target target) {
-        if (target.path == target_.path && target.deleted == target_.deleted &&
+        const bool was_trash = std::exchange(trash_mode_, false);
+        if (!was_trash && target.path == target_.path && target.deleted == target_.deleted &&
             target.directory == target_.directory &&
             target.observed_at_us <= target_.observed_at_us) {
             return;
+        }
+        if (showing_text() && !text_editing_ && target.path != text_path_) {
+            close_text();
         }
         target_ = std::move(target);
         selected_ = 0;
@@ -376,7 +394,7 @@ class ChangePanel::Impl : public sigc::trackable {
     }
 
     void update_events(const std::vector<core::EventPtr> &events) {
-        if (!enabled_ || !history_ || target_.path.empty()) {
+        if (trash_mode_ || !enabled_ || !history_ || target_.path.empty()) {
             return;
         }
         if (target_.directory) {
@@ -428,12 +446,448 @@ class ChangePanel::Impl : public sigc::trackable {
         return true;
     }
 
+    void open_text(const std::string &path, bool edit) {
+        if (text_editing_ || path.empty()) {
+            return;
+        }
+        text_path_ = path;
+        read_text(edit);
+    }
+
+    bool text_key(GdkEventKey *event) {
+        if (event->keyval == GDK_KEY_Escape && text_conflict_) {
+            if (text_overwrite_confirmation_) {
+                draw_text_conflict(false);
+            } else {
+                close_text_conflict();
+                text_editor_->grab_focus();
+            }
+            return true;
+        }
+        if (event->keyval == GDK_KEY_F4 && showing_text() && text_file_ && !text_job_) {
+            begin_text_edit();
+            return true;
+        }
+        if (event->keyval == GDK_KEY_s && (event->state & GDK_CONTROL_MASK) != 0U &&
+            showing_text() && text_editing_) {
+            save_text(false);
+            return true;
+        }
+        return false;
+    }
+
+    bool finish_text_job(job::JobId id, const std::optional<core::Error> &error) {
+        if (text_jobs_.erase(id) == 0U) {
+            return false;
+        }
+        if (text_job_ != id) {
+            return true;
+        }
+        text_job_.reset();
+        if (writing_text_) {
+            finish_text_save(error);
+        } else {
+            auto file = std::move(*text_file_result_);
+            text_file_result_.reset();
+            if (file && !error) {
+                text_editor_->get_buffer()->set_text(file->contents);
+                text_file_ = std::move(file);
+                text_editor_->get_buffer()->set_modified(false);
+                text_scroll_->show();
+                text_editing_ = edit_after_read_;
+                update_text_mode();
+                if (text_editing_) {
+                    text_editor_->grab_focus();
+                }
+            } else {
+                show_text_error(error.value_or(core::make_error(core::ErrorCode::FAILED, "")));
+            }
+        }
+        return true;
+    }
+
+    void set_trash_target(const std::string &path, const sigc::slot<void> &restore) {
+        if (trash_mode_ && trash_path_ == path) {
+            trash_restore_ = restore;
+            return;
+        }
+        trash_path_ = path;
+        trash_mode_ = true;
+        trash_restore_ = restore;
+        if (showing_text() && !text_editing_) {
+            close_text();
+        }
+        refresh();
+    }
+
     void shutdown() {
         life_.reset();
         cancel();
     }
 
   private:
+    bool showing_text() const { return views_->get_visible_child_name() == "text"; }
+
+    void build_text() {
+        auto *page = Gtk::make_managed<Gtk::Box>(Gtk::ORIENTATION_VERTICAL, 8);
+        page->get_style_context()->add_class("fs-change-body");
+        text_name_ = &append_label(*page, "", "fs-empty-title");
+        text_location_ = &append_label(*page, "", "fs-change-path");
+        auto *tabs = Gtk::make_managed<Gtk::Box>(Gtk::ORIENTATION_HORIZONTAL, 4);
+        page->pack_start(*tabs, false, false);
+        text_changes_ = &append_button(*tabs, "변경 내용", [this] { close_text(); });
+        auto *active = Gtk::make_managed<Gtk::ToggleButton>("미리보기");
+        active->set_active(true);
+        active->signal_toggled().connect([active] { active->set_active(true); });
+        tabs->pack_start(*active, false, false);
+        text_mode_ = &append_label(*page, "", "fs-change-meta");
+        auto *actions = Gtk::make_managed<Gtk::Box>(Gtk::ORIENTATION_HORIZONTAL, 4);
+        page->pack_start(*actions, false, false);
+        text_edit_button_ = &append_button(*actions, "편집 (F4)", [this] { begin_text_edit(); });
+        text_save_ = &append_button(*actions, "저장 (Ctrl+S)", [this] { save_text(false); });
+        text_cancel_ = &append_button(*actions, "편집 취소", [this] {
+            if (text_file_) {
+                text_editor_->get_buffer()->set_text(text_file_->contents);
+                text_editor_->get_buffer()->set_modified(false);
+            }
+            text_editing_ = false;
+            close_text_conflict();
+            if (target_.path != text_path_ || trash_mode_) {
+                close_text();
+            } else {
+                update_text_mode();
+            }
+        });
+        text_open_ = &append_button(*actions, "기본 프로그램으로 열기", [this] {
+            try {
+                Gio::AppInfo::launch_default_for_uri(Glib::filename_to_uri(text_path_));
+            } catch (const Glib::Error &) {
+                notify_("⚠ 파일을 열 수 없습니다", false);
+            }
+        });
+        text_confirmation_ = Gtk::make_managed<Gtk::Box>(Gtk::ORIENTATION_VERTICAL, 6);
+        text_confirmation_->get_style_context()->add_class("fs-change-confirm");
+        page->pack_start(*text_confirmation_, false, false);
+
+        text_scroll_ = Gtk::make_managed<Gtk::ScrolledWindow>();
+        text_editor_ = Gtk::make_managed<Gtk::TextView>();
+        text_editor_->get_accessible()->set_name("파일 내용");
+        text_editor_->get_style_context()->add_class("fs-change-diff");
+        text_editor_->set_monospace(true);
+        text_editor_->set_editable(false);
+        text_editor_->set_border_window_size(Gtk::TEXT_WINDOW_LEFT, 38);
+        text_editor_->signal_draw().connect(sigc::mem_fun(*this, &Impl::draw_line_numbers), true);
+        text_editor_->get_buffer()->signal_modified_changed().connect([this] {
+            if (showing_text() && text_editing_) {
+                update_text_mode();
+            }
+        });
+        text_scroll_->add(*text_editor_);
+        page->pack_start(*text_scroll_, true, true);
+        views_->add(*page, "text");
+        page->show_all();
+        for (auto *widget :
+             std::array<Gtk::Widget *, 6>{text_edit_button_, text_save_, text_cancel_, text_open_,
+                                          text_confirmation_, text_scroll_}) {
+            widget->set_no_show_all(true);
+        }
+    }
+
+    bool draw_line_numbers(const Cairo::RefPtr<Cairo::Context> &cr) {
+        const auto gutter = text_editor_->get_window(Gtk::TEXT_WINDOW_LEFT);
+        if (!gutter || !gtk_cairo_should_draw_window(cr->cobj(), gutter->gobj())) {
+            return false;
+        }
+        cr->save();
+        gtk_cairo_transform_to_window(cr->cobj(), GTK_WIDGET(text_editor_->gobj()), gutter->gobj());
+        const auto style = text_editor_->get_style_context();
+        Gdk::RGBA color;
+        if (style->lookup_color("fs_bg", color)) {
+            cr->set_source_rgba(color.get_red(), color.get_green(), color.get_blue(),
+                                color.get_alpha());
+            cr->rectangle(0, 0, 38, text_editor_->get_allocated_height());
+            cr->fill();
+        }
+        if (!style->lookup_color("fs_dim", color)) {
+            color = style->get_color(Gtk::STATE_FLAG_NORMAL);
+        }
+        cr->set_source_rgba(color.get_red(), color.get_green(), color.get_blue(),
+                            color.get_alpha());
+        Gdk::Rectangle visible;
+        text_editor_->get_visible_rect(visible);
+        Gtk::TextBuffer::iterator line;
+        int y = 0;
+        text_editor_->get_line_at_y(line, visible.get_y(), y);
+        auto layout = text_editor_->create_pango_layout("");
+        do {
+            const auto value = std::to_string(line.get_line() + 1);
+            layout->set_text(value);
+            int width = 0, height = 0;
+            layout->get_pixel_size(width, height);
+            int line_height = 0, window_x = 0, window_y = 0;
+            text_editor_->get_line_yrange(line, y, line_height);
+            text_editor_->buffer_to_window_coords(Gtk::TEXT_WINDOW_LEFT, 0, y, window_x, window_y);
+            cr->move_to(34 - width, window_y + (line_height - height) / 2.0);
+            layout->show_in_cairo_context(cr);
+        } while (y < visible.get_y() + visible.get_height() && line.forward_line());
+        cr->restore();
+        return false;
+    }
+
+    void read_text(bool edit) {
+        close_text_conflict();
+        if (!text_editing_) {
+            text_file_.reset();
+            text_scroll_->hide();
+        }
+        text_open_->hide();
+        text_name_->set_text(display_path(Glib::path_get_basename(text_path_)));
+        text_location_->set_text(display_path(text_path_));
+        views_->set_visible_child("text");
+        auto file = std::make_shared<std::optional<fs::TextFile>>();
+        const auto task = queue_.submit(
+            "텍스트 열기", [file, path = text_path_](job::Job &) -> core::Result<void> {
+                auto result = fs::read_text(path);
+                if (!result.ok()) {
+                    return result.error();
+                }
+                auto &text = result.value().contents;
+                if (text.find('\0') != std::string::npos ||
+                    !g_utf8_validate(text.data(), static_cast<gssize>(text.size()), nullptr)) {
+                    return core::make_error(
+                        core::ErrorCode::NOT_SUPPORTED,
+                        "텍스트로 열 수 없음 · UTF-8이 아니거나 NUL 문자가 있습니다 · " +
+                            format_bytes(text.size()));
+                }
+                file->emplace(std::move(result).value());
+                return {};
+            });
+        if (!task.ok()) {
+            show_text_error(task.error());
+            return;
+        }
+        track_text_job(task.value());
+        text_file_result_ = std::move(file);
+        writing_text_ = false;
+        edit_after_read_ = edit;
+        update_text_mode();
+        text_mode_->set_text("불러오는 중…");
+    }
+
+    void track_text_job(job::JobId id) {
+        text_job_ = id;
+        text_jobs_.insert(id);
+    }
+
+    void show_text_error(const core::Error &error) {
+        if (text_editing_) {
+            notify_("⚠ 파일을 다시 읽을 수 없습니다 · " + error.message, false);
+            update_text_mode();
+            text_editor_->grab_focus();
+            return;
+        }
+        text_open_->show();
+        if (error.code == core::ErrorCode::TOO_LARGE) {
+            text_mode_->set_text("미리보기 한도(4 MiB)를 넘는 파일입니다");
+        } else if (error.code == core::ErrorCode::NOT_SUPPORTED) {
+            text_mode_->set_text(error.message.find("텍스트로 열 수 없음") == 0
+                                     ? error.message
+                                     : "텍스트로 열 수 없음 · " + error.message);
+        } else {
+            text_mode_->set_text("파일을 열 수 없습니다 · " + error.message);
+        }
+        update_text_mode();
+    }
+
+    void close_text() {
+        if (text_editing_) {
+            return;
+        }
+        if (text_job_) {
+            queue_.cancel(*text_job_);
+            text_job_.reset();
+        }
+        close_text_conflict();
+        views_->set_visible_child("changes");
+    }
+
+    void begin_text_edit() {
+        if (text_file_ && !text_job_ && !text_conflict_) {
+            text_editing_ = true;
+            update_text_mode();
+            text_editor_->grab_focus();
+        }
+    }
+
+    void update_text_mode() {
+        const auto stamp = text_file_ ? std::optional(text_file_->stamp) : std::nullopt;
+        const bool usable = stamp.has_value();
+        text_edit_button_->set_visible(usable && !text_editing_);
+        text_save_->set_visible(usable && text_editing_);
+        text_cancel_->set_visible(usable && text_editing_);
+        text_changes_->set_sensitive(!text_editing_);
+        text_save_->set_sensitive(!text_job_ && !text_conflict_);
+        text_cancel_->set_sensitive(!text_job_ && !text_conflict_);
+        text_editor_->set_editable(text_editing_ && !text_job_ && !text_conflict_);
+        text_editor_->set_opacity(text_conflict_ ? 0.55 : 1.0);
+        if (text_editing_) {
+            text_editor_->get_style_context()->add_class("fs-text-editing");
+        } else {
+            text_editor_->get_style_context()->remove_class("fs-text-editing");
+        }
+        text_editor_->get_accessible()->set_description(text_editing_ ? "편집 가능" : "읽기 전용");
+        if (!stamp) {
+            return;
+        }
+        if (text_editing_) {
+            text_mode_->set_text(
+                (text_editor_->get_buffer()->get_modified() ? "● 저장 안 됨 · " : "편집 중 · ") +
+                text_facts(*stamp));
+        } else {
+            text_mode_->set_text("읽기 전용 · UTF-8 · " +
+                                 std::to_string(text_editor_->get_buffer()->get_line_count()) +
+                                 "줄 · " + format_bytes(stamp->size));
+        }
+    }
+
+    std::string text_facts(const fs::FileStamp &stamp) const {
+        std::string version;
+        if (file_.path == text_path_) {
+            const auto found = std::find_if(
+                file_.versions.begin(), file_.versions.end(), [&stamp](const auto &value) {
+                    return value.mtime_ns == stamp.mtime_ns && value.size == stamp.size;
+                });
+            if (found != file_.versions.end()) {
+                version = version_name(*found) + " · ";
+            }
+        }
+        return version + capture_time(stamp.mtime_ns / 1000) + " · " + format_bytes(stamp.size);
+    }
+
+    void save_text(bool overwrite) {
+        if (!text_file_ || text_job_ || !text_editing_ || (text_conflict_ && !overwrite)) {
+            return;
+        }
+        const auto expected = overwrite ? std::optional<fs::FileStamp>{} : text_file_->stamp;
+        const auto contents = text_editor_->get_buffer()->get_text().raw();
+        const auto confirmation = overwrite ? fs::Confirmation::CONFIRMED : fs::Confirmation::NONE;
+        auto result = std::make_shared<TextSave>();
+        const auto task = queue_.submit(
+            "텍스트 저장",
+            [result, path = text_path_, contents, expected,
+             confirmation](job::Job &) -> core::Result<void> {
+                const auto written = fs::write_text(path, contents, expected, confirmation);
+                if (written.ok()) {
+                    result->written = written.value();
+                    return {};
+                }
+                if (written.error().code == core::ErrorCode::CONFLICT) {
+                    struct stat status {};
+                    if (lstat(path.c_str(), &status) == 0 && S_ISREG(status.st_mode)) {
+                        result->disk = fs::FileStamp{
+                            static_cast<std::uint64_t>(status.st_dev),
+                            static_cast<std::uint64_t>(status.st_ino),
+                            static_cast<std::uint64_t>(status.st_size),
+                            static_cast<std::int64_t>(status.st_mtim.tv_sec) * 1000000000 +
+                                status.st_mtim.tv_nsec};
+                    }
+                }
+                return written.error();
+            });
+        if (!task.ok()) {
+            notify_("⚠ 저장을 시작할 수 없습니다", false);
+            return;
+        }
+        text_save_result_ = std::move(result);
+        track_text_job(task.value());
+        writing_text_ = true;
+        close_text_conflict();
+        update_text_mode();
+    }
+
+    void finish_text_save(const std::optional<core::Error> &error) {
+        const auto written = text_save_result_->written;
+        if (error && error->code == core::ErrorCode::CONFLICT) {
+            draw_text_conflict(false);
+            if (history_) {
+                history_->load_history_async(text_path_,
+                                             sigc::mem_fun(*this, &Impl::load_conflict_versions));
+            }
+        } else if (error || !written) {
+            notify_("⚠ 파일을 저장할 수 없습니다", false);
+            update_text_mode();
+        } else {
+            text_editing_ = false;
+            text_file_ = fs::TextFile{text_editor_->get_buffer()->get_text().raw(), *written};
+            text_editor_->get_buffer()->set_modified(false);
+            notify_("파일을 저장했습니다", true);
+            if (target_.path != text_path_ || trash_mode_) {
+                close_text();
+            } else {
+                update_text_mode();
+            }
+        }
+    }
+
+    void load_conflict_versions(core::Result<his::FileHistory> history) {
+        if (!life_ || !history.ok() || history.value().path != text_path_) {
+            return;
+        }
+        if (text_conflict_ && !text_overwrite_confirmation_ && text_file_) {
+            const auto base = text_file_->stamp;
+            const auto disk = text_save_result_->disk;
+            file_ = std::move(history).value();
+            text_conflict_base_->set_text("편집 기준 · " + text_facts(base));
+            if (disk) {
+                text_conflict_disk_->set_text("디스크 지금 · " + text_facts(*disk));
+            }
+        }
+    }
+
+    void close_text_conflict() {
+        text_conflict_ = false;
+        clear(*text_confirmation_);
+        text_confirmation_->hide();
+        if (showing_text() && text_editing_) {
+            update_text_mode();
+        }
+    }
+
+    void draw_text_conflict(bool overwrite) {
+        if (!text_file_) {
+            return;
+        }
+        const auto base = text_file_->stamp;
+        const auto disk = text_save_result_->disk;
+        clear(*text_confirmation_);
+        text_conflict_ = true;
+        text_overwrite_confirmation_ = overwrite;
+        append_label(*text_confirmation_, "편집하는 동안 다른 프로그램이 이 파일을 바꿨습니다");
+        text_conflict_base_ = &append_label(*text_confirmation_, "편집 기준 · " + text_facts(base));
+        text_conflict_disk_ = &append_label(
+            *text_confirmation_,
+            "디스크 지금 · " + (disk ? text_facts(*disk) : std::string("확인할 수 없음")));
+        auto *buttons = Gtk::make_managed<Gtk::Box>(Gtk::ORIENTATION_HORIZONTAL, 4);
+        text_confirmation_->pack_start(*buttons, false, false);
+        Gtk::Button *focus = nullptr;
+        if (overwrite) {
+            append_label(*text_confirmation_, "보관된 이전 버전은 이력에서 확인할 수 있습니다");
+            focus = &append_button(*buttons, "돌아가기", [this] { draw_text_conflict(false); });
+            append_button(*buttons, "덮어쓰기 확정", [this] { save_text(true); });
+        } else {
+            focus = &append_button(*buttons, "취소", [this] {
+                close_text_conflict();
+                text_editor_->grab_focus();
+            });
+            append_button(*buttons, "다시 읽기", [this] { read_text(false); });
+            append_button(*buttons, "덮어쓰기…", [this] { draw_text_conflict(true); });
+        }
+        buttons->show();
+        text_confirmation_->show();
+        update_text_mode();
+        focus->grab_focus();
+    }
+
     struct Input {
         std::optional<std::string> before;
         std::string after;
@@ -467,16 +921,31 @@ class ChangePanel::Impl : public sigc::trackable {
         restore_ = nullptr;
         clear(*head_);
         clear(*body_);
-        if (!target_.path.empty()) {
+        if (!trash_mode_ && !target_.path.empty()) {
             append_label(*head_, display_path(Glib::path_get_basename(target_.path)),
                          "fs-empty-title");
             append_label(*head_, display_path(target_.path), "fs-change-path");
+            if (!target_.directory && !target_.deleted) {
+                auto *modes = Gtk::make_managed<Gtk::Box>(Gtk::ORIENTATION_HORIZONTAL, 4);
+                head_->pack_start(*modes, false, false);
+                auto *current = Gtk::make_managed<Gtk::ToggleButton>("변경 내용");
+                current->set_active(true);
+                current->signal_toggled().connect([current] { current->set_active(true); });
+                modes->pack_start(*current, false, false);
+                current->show();
+                append_button(*modes, "미리보기", [this] { open_text(target_.path, false); });
+                modes->show();
+            }
         }
     }
 
     void refresh() {
         reset_body();
         if (!enabled_ || !life_) {
+            return;
+        }
+        if (trash_mode_) {
+            draw_trash();
             return;
         }
         if (!history_ || history_->state() == his::State::DISABLED) {
@@ -497,6 +966,32 @@ class ChangePanel::Impl : public sigc::trackable {
         append_label(*body_, "불러오는 중…");
         history_->load_history_async(target_.path,
                                      sigc::bind(sigc::mem_fun(*this, &Impl::loaded), generation_));
+    }
+
+    void draw_trash() {
+        if (trash_path_.empty()) {
+            append_label(*body_, "휴지통 항목을 고르면 원래 위치와 보관 버전을 볼 수 있습니다");
+            return;
+        }
+        append_label(*head_, display_path(Glib::path_get_basename(trash_path_)), "fs-empty-title");
+        append_label(*head_, display_path(trash_path_), "fs-change-path");
+        append_button(*head_, "원래 위치로 복원", [this] { trash_restore_(); });
+        auto &versions = append_label(*body_, history_ ? "보관 버전을 불러오는 중…" : "이력 꺼짐");
+        if (history_) {
+            history_->load_history_async(
+                trash_path_, sigc::bind(sigc::mem_fun(*this, &Impl::show_trash_versions),
+                                        generation_, &versions));
+        }
+    }
+
+    void show_trash_versions(core::Result<his::FileHistory> result, std::uint64_t generation,
+                             Gtk::Label *label) {
+        if (generation != generation_ || !life_) {
+            return;
+        }
+        label->set_text(result.ok()
+                            ? "보관 버전 " + std::to_string(result.value().versions.size()) + "개"
+                            : "보관 버전을 불러올 수 없습니다");
     }
 
     void loaded(core::Result<his::FileHistory> result, std::uint64_t generation) {
@@ -984,7 +1479,29 @@ class ChangePanel::Impl : public sigc::trackable {
         }
     }
 
+    struct TextSave {
+        std::optional<fs::FileStamp> written, disk;
+    };
     Gtk::Box &owner_;
+    job::JobQueue &queue_;
+    Gtk::Stack *views_ = nullptr;
+    Gtk::TextView *text_editor_ = nullptr;
+    Gtk::ScrolledWindow *text_scroll_ = nullptr;
+    Gtk::Box *text_confirmation_ = nullptr;
+    Gtk::Label *text_conflict_base_ = nullptr, *text_conflict_disk_ = nullptr;
+    Gtk::Label *text_mode_ = nullptr, *text_name_ = nullptr, *text_location_ = nullptr;
+    Gtk::Button *text_changes_ = nullptr, *text_edit_button_ = nullptr, *text_save_ = nullptr;
+    Gtk::Button *text_cancel_ = nullptr, *text_open_ = nullptr;
+    std::optional<fs::TextFile> text_file_;
+    std::optional<job::JobId> text_job_;
+    std::unordered_set<job::JobId> text_jobs_;
+    std::shared_ptr<std::optional<fs::TextFile>> text_file_result_;
+    std::shared_ptr<TextSave> text_save_result_;
+    std::string text_path_, trash_path_;
+    sigc::slot<void> trash_restore_;
+    bool text_editing_ = false, edit_after_read_ = false, writing_text_ = false;
+    bool text_conflict_ = false, text_overwrite_confirmation_ = false, trash_mode_ = false;
+
     Notify notify_;
     FolderEvents folder_events_;
     his::History *history_ = nullptr;
@@ -1013,9 +1530,9 @@ class ChangePanel::Impl : public sigc::trackable {
     bool pending_write_ = false;
 };
 
-ChangePanel::ChangePanel(Notify notify, FolderEvents folder_events)
+ChangePanel::ChangePanel(job::JobQueue &queue, Notify notify, FolderEvents folder_events)
     : Gtk::Box(Gtk::ORIENTATION_VERTICAL),
-      impl_(std::make_unique<Impl>(*this, std::move(notify), std::move(folder_events))) {
+      impl_(std::make_unique<Impl>(*this, queue, std::move(notify), std::move(folder_events))) {
     set_no_show_all(true);
     for (auto *child : get_children()) {
         child->show_all();
@@ -1039,6 +1556,18 @@ void ChangePanel::update_events(const std::vector<core::EventPtr> &events) {
 void ChangePanel::version_added(const his::Version &version) { impl_->version_added(version); }
 
 bool ChangePanel::cancel_confirmation() { return impl_->cancel_confirmation(); }
+
+void ChangePanel::open_text(const std::string &path, bool edit) { impl_->open_text(path, edit); }
+
+bool ChangePanel::text_key(GdkEventKey *event) { return impl_->text_key(event); }
+
+bool ChangePanel::finish_text_job(job::JobId id, const std::optional<core::Error> &error) {
+    return impl_->finish_text_job(id, error);
+}
+
+void ChangePanel::set_trash_target(const std::string &path, const sigc::slot<void> &restore) {
+    impl_->set_trash_target(path, restore);
+}
 
 void ChangePanel::shutdown() { impl_->shutdown(); }
 

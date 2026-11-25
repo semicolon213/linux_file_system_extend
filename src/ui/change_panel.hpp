@@ -2,6 +2,7 @@
 
 #include "core/event.hpp"
 #include "his/his.hpp"
+#include "job/job.hpp"
 
 #include <functional>
 #include <memory>
@@ -32,7 +33,7 @@ class ChangePanel final : public Gtk::Box {
 
     using Notify = std::function<void(const std::string &, bool)>;
     using FolderEvents = std::function<std::vector<core::EventPtr>(const std::string &)>;
-    ChangePanel(Notify notify, FolderEvents folder_events);
+    ChangePanel(job::JobQueue &queue, Notify notify, FolderEvents folder_events);
     ~ChangePanel() override;
 
     void set_history(his::History *history, const std::string &reason = {});
@@ -41,6 +42,10 @@ class ChangePanel final : public Gtk::Box {
     void update_events(const std::vector<core::EventPtr> &events);
     void version_added(const his::Version &version);
     bool cancel_confirmation();
+    void open_text(const std::string &path, bool edit);
+    bool text_key(GdkEventKey *event);
+    bool finish_text_job(job::JobId id, const std::optional<core::Error> &error);
+    void set_trash_target(const std::string &path, const sigc::slot<void> &restore);
     void shutdown();
 
   private:

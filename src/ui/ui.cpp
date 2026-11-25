@@ -1,5 +1,8 @@
 #include "ui/ui.hpp"
 
+#include "search/search.hpp"
+#include "trash/trash.hpp"
+
 #include "core/event.hpp"
 #include "core/path.hpp"
 #include "dash/dash.hpp"
@@ -104,6 +107,10 @@ treeview header button { min-height: 32px; border-radius: 0; border-width: 0 0 1
 .fs-change-confirm { border: 1px solid @fs_ink_2; border-radius: 4px; padding: 8px 12px; }
 .fs-change-diff { border: 1px solid @fs_line; border-radius: 4px; }
 .fs-change-diff text { background: @fs_bg; color: @fs_ink; }
+.fs-trash-confirm, .fs-trash-confirm .dialog-vbox { background: @fs_bg_2; color: @fs_ink; }
+button.fs-danger-confirm { background: @fs_ink; color: @fs_bg; }
+entry.fs-path-entry { border-color: @fs_sel; }
+.fs-text-editing { border-color: @fs_sel; }
 scrollbar slider { background: @fs_scroll_thumb; min-width: 8px; min-height: 8px; }
 .fs-summary decoration { border: 1px solid @fs_line_float; border-radius: 6px; }
 .fs-summary headerbar { min-height: 40px; }
@@ -571,6 +578,7 @@ class MainWindow::Impl : public sigc::trackable {
         build_window();
         connect_models();
         open_history();
+        refresh_trash();
         load_bookmarks();
         create_tab(nav::home());
         auto watcher_result = mon::Watcher::create();
@@ -631,6 +639,10 @@ class MainWindow::Impl : public sigc::trackable {
             }
         }
         tree_cancel_->cancel();
+        if (trash_cancel_) {
+            trash_cancel_->cancel();
+        }
+        searcher_.reset();
         watcher_events_.disconnect();
         watcher_state_.disconnect();
         watcher_.reset();
@@ -743,22 +755,48 @@ class MainWindow::Impl : public sigc::trackable {
         breadcrumb_view->set_propagate_natural_width(true);
         breadcrumb_view->add(*breadcrumb_);
         set_accessible(*breadcrumb_view, "현재 경로");
-        header_->set_custom_title(*breadcrumb_view);
+        auto *location = Gtk::make_managed<Gtk::Stack>();
+        location_ = location;
+        location_->set_homogeneous(false);
+        location_->add(*breadcrumb_view, "crumbs");
+        location_->add(*Gtk::make_managed<Gtk::Label>("휴지통"), "trash");
+        address_ = Gtk::make_managed<Gtk::Entry>();
+        add_class(*address_, "fs-data");
+        add_class(*address_, "fs-path-entry");
+        location_->add(*address_, "address");
+        header_->set_custom_title(*location_);
         breadcrumb_scroll_ = breadcrumb_view->get_hadjustment();
         breadcrumb_scroll_->signal_changed().connect(
             sigc::mem_fun(*this, &Impl::show_breadcrumb_end));
         search_ = Gtk::make_managed<Gtk::SearchEntry>();
-        // design-pending: U-6
         completion_ = Gtk::EntryCompletion::create();
         completion_model_ = Gtk::ListStore::create(completion_columns_);
         completion_->set_model(completion_model_);
         completion_->set_text_column(completion_columns_.path);
-        search_->set_completion(completion_);
-        search_->signal_changed().connect(sigc::mem_fun(*this, &Impl::complete_address));
-        search_->set_placeholder_text("폴더로 이동");
+        completion_->set_match_func(
+            [](const Glib::ustring &, const Gtk::TreeModel::const_iterator &) { return true; });
+        completion_->signal_match_selected().connect(
+            [this](const Gtk::TreeModel::iterator &row) {
+                const std::string path = (*row)[completion_columns_.raw];
+                navigate(path, true);
+                return true;
+            },
+            false);
+        address_->set_completion(completion_);
+        address_->signal_changed().connect(sigc::mem_fun(*this, &Impl::complete_address));
+        set_accessible(*address_, "주소 입력 및 폴더 자동완성");
+        address_->signal_activate().connect([this] {
+            const std::string input = address_->get_text();
+            close_address();
+            if (!input.empty()) {
+                navigate(input, true);
+            }
+        });
+        search_->set_placeholder_text("이 폴더에서 검색");
         search_->set_size_request(220, 30);
-        set_accessible(*search_, "주소 입력 및 폴더 자동완성");
-        search_->signal_activate().connect(sigc::mem_fun(*this, &Impl::activate_search));
+        set_accessible(*search_, "이 폴더에서 검색");
+        search_->signal_search_changed().connect(sigc::mem_fun(*this, &Impl::start_search));
+        search_->signal_stop_search().connect([this] { leave_results(true); });
         header_->pack_end(*search_);
 
         metrics_ = Gtk::make_managed<Gtk::Label>();
@@ -858,6 +896,10 @@ class MainWindow::Impl : public sigc::trackable {
         auto *scroll = Gtk::make_managed<Gtk::ScrolledWindow>();
         scroll->add(*tree);
         sidebar_->pack_start(*scroll, true, true);
+        trash_button_ = Gtk::make_managed<Gtk::Button>("휴지통");
+        trash_button_->set_relief(Gtk::RELIEF_NONE);
+        trash_button_->signal_clicked().connect(sigc::mem_fun(*this, &Impl::open_trash));
+        sidebar_->pack_start(*trash_button_, false, false);
         content_->add1(*sidebar_);
     }
 
@@ -961,8 +1003,14 @@ class MainWindow::Impl : public sigc::trackable {
         notebook_->set_scrollable(true);
         notebook_->signal_switch_page().connect(sigc::mem_fun(*this, &Impl::switch_tab));
         auto *work = Gtk::make_managed<Gtk::Box>(Gtk::ORIENTATION_HORIZONTAL);
-        work->pack_start(*notebook_, true, true);
+        center_ = Gtk::make_managed<Gtk::Stack>();
+        center_->set_homogeneous(false);
+        center_->add(*notebook_, "folders");
+        build_results();
+        build_trash();
+        work->pack_start(*center_, true, true);
         panel_ = Gtk::make_managed<ChangePanel>(
+            queue_,
             [this](const std::string &message, bool success) {
                 if (success) {
                     show_toast(message);
@@ -991,6 +1039,567 @@ class MainWindow::Impl : public sigc::trackable {
         });
         right->pack_start(*work, true, true);
         content_->add2(*right);
+    }
+
+    void build_results() {
+        auto *page = Gtk::make_managed<Gtk::Box>(Gtk::ORIENTATION_VERTICAL);
+        search_title_ = Gtk::make_managed<Gtk::Label>();
+        search_title_->set_xalign(0);
+        search_title_->set_ellipsize(Pango::ELLIPSIZE_END);
+        add_class(*search_title_, "fs-empty-title");
+        page->pack_start(*search_title_, false, false);
+        auto *bar = Gtk::make_managed<Gtk::Box>(Gtk::ORIENTATION_HORIZONTAL, 8);
+        add_class(*bar, "fs-band");
+        add_class(*bar, "quiet");
+        search_spinner_ = Gtk::make_managed<Gtk::Spinner>();
+        search_spinner_->set_no_show_all(true);
+        bar->pack_start(*search_spinner_, false, false);
+        search_status_ = Gtk::make_managed<Gtk::Label>();
+        search_status_->set_xalign(0);
+        search_status_->set_line_wrap(true);
+        bar->pack_start(*search_status_, true, true);
+        search_back_ = Gtk::make_managed<Gtk::Button>();
+        search_back_->signal_clicked().connect([this] { leave_results(true); });
+        bar->pack_end(*search_back_, false, false);
+        page->pack_start(*bar, false, false);
+
+        auto *chip_scroll = Gtk::make_managed<Gtk::ScrolledWindow>();
+        chip_scroll->set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_NEVER);
+        search_chips_ = Gtk::make_managed<Gtk::Box>(Gtk::ORIENTATION_HORIZONTAL, 4);
+        search_chips_->get_accessible()->set_name("종류로 거르기");
+        search_chips_->pack_start(*Gtk::make_managed<Gtk::Label>("종류"), false, false);
+        search_clear_ = Gtk::make_managed<Gtk::Button>("거르기 해제");
+        search_clear_->set_no_show_all(true);
+        search_clear_->signal_clicked().connect([this] {
+            for (const auto &[extension, chip] : search_extensions_) {
+                chip.first->set_active(false);
+            }
+        });
+        search_chips_->pack_end(*search_clear_, false, false);
+        chip_scroll->add(*search_chips_);
+        page->pack_start(*chip_scroll, false, false);
+
+        search_model_ = Gtk::ListStore::create(result_columns_);
+        search_filter_ = Gtk::TreeModelFilter::create(search_model_);
+        search_filter_->set_visible_func([this](const Gtk::TreeModel::const_iterator &row) {
+            const Glib::ustring extension = (*row)[result_columns_.extension];
+            const auto chip = search_extensions_.find(extension);
+            return !search_clear_->get_visible() ||
+                   (chip != search_extensions_.end() && chip->second.first->get_active());
+        });
+        results_tree_ = Gtk::make_managed<Gtk::TreeView>(search_filter_);
+        set_accessible(*results_tree_, "검색 결과");
+        results_tree_->set_enable_search(false);
+        results_tree_->append_column("이름", result_columns_.name);
+        auto *name = results_tree_->get_column(0);
+        name->set_expand(true);
+        name->set_resizable(true);
+        if (auto *text = dynamic_cast<Gtk::CellRendererText *>(name->get_first_cell())) {
+            name->clear_attributes(*text);
+            name->add_attribute(text->property_markup(), result_columns_.markup);
+            text->property_ellipsize() = Pango::ELLIPSIZE_END;
+        }
+        append_location_column(*results_tree_, "위치");
+        results_tree_->append_column("크기", result_columns_.size);
+        results_tree_->append_column("수정 시각", result_columns_.date);
+        results_tree_->signal_row_activated().connect(
+            [this](const Gtk::TreeModel::Path &path, Gtk::TreeViewColumn *) {
+                const auto iter = search_filter_->get_iter(path);
+                if (iter && current_tab()) {
+                    const std::string item = (*iter)[result_columns_.key];
+                    navigate(Glib::path_get_dirname(item), true);
+                    current_tab()->pending_selection = item;
+                }
+            });
+        auto *scroll = Gtk::make_managed<Gtk::ScrolledWindow>();
+        scroll->add(*results_tree_);
+        search_state_ = Gtk::make_managed<Gtk::Stack>();
+        search_state_->add(*scroll, "list");
+        auto *blank = Gtk::make_managed<Gtk::Box>(Gtk::ORIENTATION_VERTICAL, 8);
+        blank->set_halign(Gtk::ALIGN_CENTER);
+        blank->set_valign(Gtk::ALIGN_CENTER);
+        search_empty_ = Gtk::make_managed<Gtk::Label>();
+        add_class(*search_empty_, "fs-empty-title");
+        blank->pack_start(*search_empty_, false, false);
+        auto *up = Gtk::make_managed<Gtk::Button>("상위 폴더에서 다시 찾기");
+        up->signal_clicked().connect([this] {
+            const auto query = search_query_;
+            if (const auto parent = nav::parent(search_root_)) {
+                navigate(*parent, true);
+                search_->set_text(query);
+            }
+        });
+        blank->pack_start(*up, false, false);
+        search_state_->add(*blank, "empty");
+        page->pack_start(*search_state_, true, true);
+        center_->add(*page, "search");
+    }
+
+    bool leave_results(bool focus = false) {
+        if (center_->get_visible_child_name() == "folders") {
+            return false;
+        }
+        if (search_id_ != 0) {
+            searcher_->cancel(std::exchange(search_id_, 0));
+            if (focus) {
+                show_toast("검색을 취소했습니다");
+            }
+        }
+        search_->set_text("");
+        center_->set_visible_child("folders");
+        if (location_->get_visible_child_name() == "trash") {
+            location_->set_visible_child("crumbs");
+        }
+        if (auto *tab = current_tab()) {
+            update_navigation(*tab);
+            update_panel_target(*tab);
+            update_status();
+            if (focus) {
+                focus_folder(*tab);
+            }
+        }
+        return true;
+    }
+
+    void start_search() {
+        const auto query = search_->get_text();
+        auto *tab = current_tab();
+        if (shutdown_ || !tab) {
+            return;
+        }
+        if (query.empty()) {
+            if (center_->get_visible_child_name() == "search") {
+                leave_results();
+            }
+            return;
+        }
+        if (tab->pending_history) {
+            return;
+        }
+        if (query == search_query_ && tab->history.current() == search_root_ &&
+            center_->get_visible_child_name() == "search") {
+            return;
+        }
+        if (search_id_ != 0) {
+            searcher_->cancel(std::exchange(search_id_, 0));
+        }
+        close_address();
+        location_->set_visible_child("crumbs");
+        center_->set_visible_child("search");
+        panel_->set_target({});
+        search_root_ = tab->history.current();
+        search_query_ = query;
+        search_title_->set_text("검색: " + query);
+        search_model_->clear();
+        search_model_->set_sort_column(GTK_TREE_SORTABLE_UNSORTED_SORT_COLUMN_ID,
+                                       Gtk::SORT_ASCENDING);
+        for (const auto &[extension, chip] : search_extensions_) {
+            gtk_widget_destroy(GTK_WIDGET(chip.first->gobj()));
+        }
+        search_extensions_.clear();
+        search_clear_->hide();
+        search_count_ = 0;
+        search_status_->set_tooltip_text("");
+        search_summary_.reset();
+        search_state_->set_visible_child("list");
+        const auto started =
+            searcher_->start({search_root_, query, {}, true, tab->show_hidden, 10000});
+        if (!started.ok()) {
+            search_status_->set_text("검색할 수 없습니다 · " + started.error().message);
+            search_back_->set_label("폴더로 돌아가기 (Esc)");
+            search_spinner_->stop();
+            search_spinner_->hide();
+            return;
+        }
+        search_id_ = started.value();
+        search_spinner_->show();
+        search_spinner_->start();
+        search_back_->set_label("취소 (Esc)");
+        search_status_->set_text("찾는 중… · 0개 찾음");
+    }
+
+    void filter_search() {
+        search_clear_->set_visible(
+            std::any_of(search_extensions_.begin(), search_extensions_.end(),
+                        [](const auto &entry) { return entry.second.first->get_active(); }));
+        search_filter_->refilter();
+        if (search_summary_) {
+            show_search_summary(*search_summary_);
+        }
+    }
+
+    void search_hits(search::SearchId id, const std::vector<search::Hit> &hits) {
+        if (id != search_id_) {
+            return;
+        }
+        for (const auto &hit : hits) {
+            const auto &entry = hit.entry;
+            const auto name = Glib::ustring(display_path(entry.name));
+            const auto dot = name.rfind('.');
+            const auto extension =
+                entry.type == core::FileType::DIRECTORY
+                    ? Glib::ustring("폴더")
+                    : (dot != Glib::ustring::npos && dot != 0 && dot + 1 < name.size()
+                           ? "." + name.substr(dot + 1).casefold()
+                           : Glib::ustring("확장자 없음"));
+            auto chip = search_extensions_.find(extension);
+            if (chip == search_extensions_.end()) {
+                auto *button = Gtk::make_managed<Gtk::ToggleButton>();
+                add_class(*button, "fs-chip");
+                search_chips_->pack_start(*button, false, false);
+                button->signal_toggled().connect(sigc::mem_fun(*this, &Impl::filter_search));
+                button->show();
+                chip = search_extensions_.emplace(extension, std::make_pair(button, 0)).first;
+            }
+            ++chip->second.second;
+            const auto markup = matched_name(name);
+            const auto directory = Glib::path_get_dirname(hit.path);
+            const auto location = display_path(
+                directory == search_root_
+                    ? "."
+                    : directory.substr(search_root_ == "/" ? 1 : search_root_.size() + 1));
+            const auto size =
+                entry.type == core::FileType::DIRECTORY ? "—" : format_bytes(entry.size);
+            const auto date = format_time(entry.mtime_ns / 1000, true);
+            // Publish the entire row at once so the filter sees its extension on insertion.
+            gtk_list_store_insert_with_values(
+                search_model_->gobj(), nullptr, -1, result_columns_.key.index(), hit.path.c_str(),
+                result_columns_.name.index(), name.c_str(), result_columns_.markup.index(),
+                markup.c_str(), result_columns_.location.index(), location.c_str(),
+                result_columns_.extension.index(), extension.c_str(), result_columns_.size.index(),
+                size.c_str(), result_columns_.date.index(), date.c_str(), -1);
+        }
+        for (const auto &[extension, chip] : search_extensions_) {
+            chip.first->set_label(extension + " " + std::to_string(chip.second));
+        }
+        search_count_ += hits.size();
+        search_status_->set_text("찾는 중… · " + std::to_string(search_count_) + "개 찾음");
+    }
+
+    Glib::ustring matched_name(const Glib::ustring &name) const {
+        const auto folded = search_query_.casefold();
+        const auto match = name.casefold().find(folded);
+        if (match == Glib::ustring::npos) {
+            return Glib::Markup::escape_text(name);
+        }
+        Glib::ustring::size_type first = 0, last = 0, offset = 0;
+        for (const auto codepoint : name) {
+            const auto width = Glib::ustring(1, codepoint).casefold().size();
+            if (offset + width <= match) {
+                ++first;
+            }
+            if (offset < match + folded.size()) {
+                ++last;
+            }
+            offset += width;
+        }
+        return Glib::Markup::escape_text(name.substr(0, first)) + "<b><u>" +
+               Glib::Markup::escape_text(name.substr(first, last - first)) + "</u></b>" +
+               Glib::Markup::escape_text(name.substr(last));
+    }
+
+    void search_done(search::SearchId id, const core::Result<search::Summary> &result) {
+        if (id != search_id_) {
+            return;
+        }
+        search_id_ = 0;
+        search_spinner_->stop();
+        search_spinner_->hide();
+        search_back_->set_label("폴더로 돌아가기 (Esc)");
+        if (!result.ok()) {
+            search_status_->set_text(result.error().code == core::ErrorCode::CANCELLED
+                                         ? "검색을 취소했습니다"
+                                         : "검색할 수 없습니다 · " + result.error().message);
+            return;
+        }
+        search_model_->set_sort_column(result_columns_.name, Gtk::SORT_ASCENDING);
+        search_summary_ = result.value();
+        show_search_summary(result.value());
+    }
+
+    void show_search_summary(const search::Summary &summary) {
+        const auto count = search_filter_->children().size();
+        const auto denied = summary.denied_more ? "100+" : std::to_string(summary.denied.size());
+        search_status_->set_text(std::to_string(count) + "개 찾음 · 폴더 " +
+                                 std::to_string(summary.dirs_scanned) + "개 · 접근 불가 " + denied +
+                                 "개" + (summary.truncated ? " · 결과 한도 도달" : ""));
+        std::string skipped;
+        for (const auto &path : summary.denied) {
+            skipped += display_path(path) + "\n";
+        }
+        search_status_->set_tooltip_text(skipped);
+        search_empty_->set_text("검색 결과가 없습니다\n파일 이름만 찾습니다 · 건너뛴 폴더 " +
+                                denied + "개");
+        search_state_->set_visible_child(count == 0 ? "empty" : "list");
+    }
+
+    void append_location_column(Gtk::TreeView &table, const Glib::ustring &title) {
+        const auto index = table.append_column(title, result_columns_.location) - 1;
+        auto *column = table.get_column(index);
+        column->set_expand(true);
+        column->set_resizable(true);
+        if (auto *text = dynamic_cast<Gtk::CellRendererText *>(column->get_first_cell())) {
+            text->property_ellipsize() = Pango::ELLIPSIZE_MIDDLE;
+            text->property_family() = "monospace";
+            Gdk::RGBA color;
+            if (table.get_style_context()->lookup_color("fs_dim", color)) {
+                text->property_foreground_rgba() = color;
+            }
+        }
+    }
+
+    bool in_trash() const { return center_->get_visible_child_name() == "trash"; }
+
+    void build_trash() {
+        auto *page = Gtk::make_managed<Gtk::Box>(Gtk::ORIENTATION_VERTICAL);
+        auto *bar = Gtk::make_managed<Gtk::Box>(Gtk::ORIENTATION_HORIZONTAL, 6);
+        auto *title = Gtk::make_managed<Gtk::Label>("휴지통");
+        add_class(*title, "fs-empty-title");
+        bar->pack_start(*title, false, false);
+        trash_status_ = Gtk::make_managed<Gtk::Label>();
+        trash_status_->set_xalign(0);
+        trash_status_->set_line_wrap(true);
+        bar->pack_start(*trash_status_, true, true);
+        trash_restore_ = Gtk::make_managed<Gtk::Button>("복원");
+        trash_delete_ = Gtk::make_managed<Gtk::Button>("영구 삭제…");
+        trash_empty_ = Gtk::make_managed<Gtk::Button>("휴지통 비우기…");
+        trash_restore_->signal_clicked().connect([this] { restore_trash(trash_selection()); });
+        trash_delete_->signal_clicked().connect([this] { confirm_trash_delete(false); });
+        trash_empty_->signal_clicked().connect([this] { confirm_trash_delete(true); });
+        for (auto *button : {trash_restore_, trash_delete_, trash_empty_}) {
+            bar->pack_start(*button, false, false);
+            button->set_sensitive(false);
+        }
+        page->pack_start(*bar, false, false);
+        trash_conflict_ = Gtk::make_managed<Gtk::Box>(Gtk::ORIENTATION_HORIZONTAL, 8);
+        add_class(*trash_conflict_, "fs-band");
+        trash_conflict_->set_no_show_all(true);
+        auto *conflict = Gtk::make_managed<Gtk::Label>("⚠ 원래 위치에 같은 이름의 항목이 있습니다");
+        auto *open = Gtk::make_managed<Gtk::Button>("원래 폴더 열기");
+        open->signal_clicked().connect([this] {
+            const auto directory = Glib::path_get_dirname(trash_conflict_path_);
+            navigate(directory, true);
+        });
+        trash_conflict_->pack_start(*conflict, true, true);
+        trash_conflict_->pack_end(*open, false, false);
+        page->pack_start(*trash_conflict_, false, false);
+
+        trash_model_ = Gtk::ListStore::create(result_columns_);
+        trash_tree_ = Gtk::make_managed<Gtk::TreeView>(trash_model_);
+        set_accessible(*trash_tree_, "휴지통 항목");
+        trash_tree_->set_enable_search(false);
+        const auto selection = trash_tree_->get_selection();
+        selection->set_mode(Gtk::SELECTION_MULTIPLE);
+        auto *toggle = Gtk::make_managed<Gtk::CellRendererToggle>();
+        toggle->property_activatable() = true;
+        auto *column = Gtk::make_managed<Gtk::TreeViewColumn>("선택", *toggle);
+        trash_tree_->append_column(*column);
+        {
+            column->set_cell_data_func(
+                *toggle, [selection](Gtk::CellRenderer *cell, const Gtk::TreeModel::iterator &row) {
+                    static_cast<Gtk::CellRendererToggle *>(cell)->property_active() =
+                        selection->is_selected(row);
+                });
+            toggle->signal_toggled().connect([selection](const Glib::ustring &value) {
+                const Gtk::TreeModel::Path path(value);
+                if (selection->is_selected(path)) {
+                    selection->unselect(path);
+                } else {
+                    selection->select(path);
+                }
+            });
+        }
+        trash_tree_->append_column("이름", result_columns_.name);
+        trash_tree_->get_column(1)->set_resizable(true);
+        append_location_column(*trash_tree_, "원래 위치");
+        trash_tree_->append_column("삭제 시각", result_columns_.date);
+        trash_tree_->append_column("크기", result_columns_.size);
+        trash_model_->set_sort_column(result_columns_.timestamp, Gtk::SORT_DESCENDING);
+        trash_selection_changed_ = selection->signal_changed().connect(
+            sigc::mem_fun(*this, &Impl::update_trash_selection));
+        auto *scroll = Gtk::make_managed<Gtk::ScrolledWindow>();
+        scroll->add(*trash_tree_);
+        trash_message_ = Gtk::make_managed<Gtk::Label>("휴지통을 불러오는 중…");
+        trash_message_->set_line_wrap(true);
+        add_class(*trash_message_, "fs-empty-title");
+        trash_state_ = Gtk::make_managed<Gtk::Stack>();
+        trash_state_->add(*trash_message_, "message");
+        trash_state_->add(*scroll, "list");
+        page->pack_start(*trash_state_, true, true);
+        center_->add(*page, "trash");
+    }
+
+    void open_trash() {
+        leave_results();
+        close_address();
+        center_->set_visible_child("trash");
+        location_->set_visible_child("trash");
+        trash_conflict_->hide();
+        trash_state_->set_visible_child("message");
+        trash_message_->set_text("휴지통을 불러오는 중…");
+        refresh_trash();
+        update_trash_selection();
+    }
+
+    void refresh_trash() {
+        if (trash_cancel_) {
+            trash_cancel_->cancel();
+        }
+        trash_cancel_ = Gio::Cancellable::create();
+        trash::list_async(trash_cancel_,
+                          sigc::bind(sigc::mem_fun(*this, &Impl::finish_trash), trash_cancel_));
+    }
+
+    void finish_trash(core::Result<std::vector<trash::Item>> result,
+                      const Glib::RefPtr<Gio::Cancellable> &request) {
+        if (shutdown_ || request != trash_cancel_) {
+            return;
+        }
+        if (!result.ok()) {
+            trash_state_->set_visible_child("message");
+            trash_model_->clear();
+            trash_items_.clear();
+            trash_button_->set_label("휴지통");
+            trash_message_->set_text("휴지통을 열 수 없습니다 · " + result.error().message);
+            trash_state_->set_visible_child("message");
+            update_trash_selection();
+            return;
+        }
+        const auto selected = trash_selection();
+        trash_selection_changed_.block();
+        trash_model_->clear();
+        trash_items_.clear();
+        for (auto &item : result.value()) {
+            const auto iter = trash_model_->append();
+            const auto &row = *iter;
+            row[result_columns_.key] = item.id;
+            row[result_columns_.name] =
+                display_path(item.info_missing ? item.id : basename(item.original_path));
+            row[result_columns_.location] =
+                item.info_missing ? "—" : display_path(Glib::path_get_dirname(item.original_path));
+            row[result_columns_.date] =
+                item.deleted_at_us ? format_time(*item.deleted_at_us, true) : "—";
+            row[result_columns_.timestamp] = item.deleted_at_us.value_or(0);
+            row[result_columns_.size] =
+                item.type == core::FileType::DIRECTORY ? "—" : format_bytes(item.size);
+            const auto id = item.id;
+            trash_items_.emplace(id, std::move(item));
+            if (std::find(selected.begin(), selected.end(), id) != selected.end()) {
+                trash_tree_->get_selection()->select(iter);
+            }
+        }
+        trash_selection_changed_.unblock();
+        trash_button_->set_label("휴지통 " + std::to_string(trash_items_.size()));
+        trash_message_->set_text("휴지통이 비어 있습니다");
+        trash_state_->set_visible_child(trash_items_.empty() ? "message" : "list");
+        update_trash_selection();
+    }
+
+    std::vector<std::string> trash_selection() const {
+        std::vector<std::string> ids;
+        for (const auto &path : trash_tree_->get_selection()->get_selected_rows()) {
+            if (const auto row = trash_model_->get_iter(path)) {
+                ids.push_back((*row)[result_columns_.key]);
+            }
+        }
+        return ids;
+    }
+
+    void update_trash_selection() {
+        const auto ids = trash_selection();
+        const bool ready = trash_state_->get_visible_child_name() == "list" && trash_jobs_.empty();
+        trash_restore_->set_sensitive(ready && !ids.empty());
+        trash_delete_->set_sensitive(ready && !ids.empty());
+        trash_empty_->set_sensitive(ready && !trash_items_.empty());
+        if (!in_trash()) {
+            return;
+        }
+        std::uint64_t bytes = 0;
+        for (const auto &[id, item] : trash_items_) {
+            bytes += item.size;
+        }
+        auto text = std::to_string(trash_items_.size()) + "개 · " + format_bytes(bytes);
+        if (!ids.empty()) {
+            text += " · " + std::to_string(ids.size()) + "개 선택";
+        }
+        trash_status_->set_text(text);
+        if (ready && ids.size() == 1) {
+            const auto found = trash_items_.find(ids.front());
+            if (found != trash_items_.end() && !found->second.info_missing) {
+                const auto &item = found->second;
+                panel_->set_trash_target(item.original_path,
+                                         [this, id = item.id] { restore_trash({id}); });
+                return;
+            }
+        }
+        panel_->set_trash_target({}, {});
+    }
+
+    void restore_trash(const std::vector<std::string> &ids) {
+        if (!ids.empty() && trash_jobs_.empty()) {
+            trash_conflict_->hide();
+            submit_trash(trash::restore(queue_, ids), "복원");
+        }
+    }
+
+    void confirm_trash_delete(bool all) {
+        if (!trash_jobs_.empty()) {
+            return;
+        }
+        auto ids = trash_selection();
+        if (all) {
+            ids.clear();
+            for (const auto &row : trash_model_->children()) {
+                ids.push_back(row[result_columns_.key]);
+            }
+        }
+        if (ids.empty()) {
+            return;
+        }
+        std::uint64_t bytes = 0;
+        for (const auto &id : ids) {
+            bytes += trash_items_.at(id).size;
+        }
+        const auto &first = trash_items_.at(ids.front());
+        const auto name =
+            display_path(first.info_missing ? first.id : basename(first.original_path));
+        Gtk::MessageDialog dialog(window_, all ? "휴지통을 비울까요?" : "영구 삭제하시겠습니까?",
+                                  false, Gtk::MESSAGE_WARNING, Gtk::BUTTONS_NONE, true);
+        add_class(dialog, "fs-trash-confirm");
+        const auto count = std::to_string(ids.size());
+        dialog.set_secondary_text(
+            count + "개 항목 · " + format_bytes(bytes) + "\n삭제하면 되돌릴 수 없습니다.\n" + name +
+            (ids.size() > 1 ? " 외 " + std::to_string(ids.size() - 1) + "개" : ""));
+        auto *cancel = dialog.add_button("취소", Gtk::RESPONSE_CANCEL);
+        auto *confirm = dialog.add_button(count + "개 영구 삭제", Gtk::RESPONSE_OK);
+        add_class(*confirm, "fs-danger-confirm");
+        dialog.set_default_response(Gtk::RESPONSE_CANCEL);
+        dialog.set_focus(*cancel);
+        dialog.present();
+        root_->set_opacity(0.45);
+        const int response = dialog.run();
+        root_->set_opacity(1.0);
+        if (response == Gtk::RESPONSE_OK) {
+            const auto confirmation = fs::Confirmation::CONFIRMED;
+            submit_trash(all ? trash::empty(queue_, confirmation)
+                             : trash::delete_items(queue_, ids, confirmation),
+                         "영구 삭제");
+        }
+    }
+
+    void submit_trash(const core::Result<job::JobId> &result, const Glib::ustring &title) {
+        if (result.ok()) {
+            trash_jobs_.insert(result.value());
+            update_trash_selection();
+        }
+        handle_job_submit(result, title);
+    }
+
+    void show_trash_conflict() {
+        for (auto *child : trash_conflict_->get_children()) {
+            child->show();
+        }
+        trash_conflict_->show();
     }
 
     void open_history() {
@@ -1184,6 +1793,8 @@ class MainWindow::Impl : public sigc::trackable {
     }
 
     void connect_models() {
+        searcher_->signal_hits().connect(sigc::mem_fun(*this, &Impl::search_hits));
+        searcher_->signal_done().connect(sigc::mem_fun(*this, &Impl::search_done));
         queue_state_ = queue_.signal_state().connect(sigc::mem_fun(*this, &Impl::on_job_state));
         queue_progress_ =
             queue_.signal_progress().connect(sigc::mem_fun(*this, &Impl::on_job_progress));
@@ -1222,6 +1833,8 @@ class MainWindow::Impl : public sigc::trackable {
     }
 
     void create_tab(const std::string &path) {
+        leave_results();
+        search_->set_text("");
         auto tab = std::make_unique<Tab>(path);
         tab->model = Gtk::ListStore::create(file_columns_);
         tab->tree = Gtk::make_managed<Gtk::TreeView>(tab->model);
@@ -1385,6 +1998,7 @@ class MainWindow::Impl : public sigc::trackable {
 
     void switch_tab(Gtk::Widget *, guint page) {
         if (page < tabs_.size()) {
+            search_->set_text("");
             update_navigation(*tabs_[page]);
             update_panel_target(*tabs_[page]);
             update_watch_band();
@@ -1393,6 +2007,9 @@ class MainWindow::Impl : public sigc::trackable {
     }
 
     void navigate(const std::string &path, bool push) {
+        leave_results();
+        search_->set_text("");
+        close_address();
         Tab *tab = current_tab();
         if (tab == nullptr) {
             return;
@@ -1412,6 +2029,9 @@ class MainWindow::Impl : public sigc::trackable {
         }
         tab.cancellable = Gio::Cancellable::create();
         ++tab.generation;
+        if (window_.get_focus() == tab.tree) {
+            window_.unset_focus();
+        }
         tab.state->set_visible_child("loading");
         if (tab.pending_history && current_tab() == &tab) {
             panel_->set_target({});
@@ -1442,6 +2062,7 @@ class MainWindow::Impl : public sigc::trackable {
             if (current_tab() == tab) {
                 update_navigation(*tab);
                 update_status();
+                search_->set_text("");
                 show_band("⚠ " + tab->error_label->get_text(), false);
             }
             return;
@@ -1472,7 +2093,10 @@ class MainWindow::Impl : public sigc::trackable {
         }
         tab->state->set_visible_child(entries.empty() ? "empty" : "list");
         if (tab->pending_selection) {
-            select_file(*tab, *tab->pending_selection);
+            if (select_file(*tab, *tab->pending_selection) && current_tab() == tab &&
+                tab->tree->get_mapped()) {
+                tab->tree->grab_focus();
+            }
             tab->pending_selection.reset();
         }
         if (auto change = std::exchange(tab->pending_change, {}); change && current_tab() == tab) {
@@ -1482,6 +2106,9 @@ class MainWindow::Impl : public sigc::trackable {
             update_navigation(*tab);
             update_watch_band();
             update_status();
+            if (!search_->get_text().empty() && center_->get_visible_child_name() == "folders") {
+                start_search();
+            }
         }
     }
 
@@ -1525,9 +2152,13 @@ class MainWindow::Impl : public sigc::trackable {
                 sigc::bind(sigc::mem_fun(*this, &Impl::navigate), crumbs[index], true));
             breadcrumb_->pack_start(*button, false, false);
         }
+        auto *address_button = Gtk::make_managed<Gtk::Button>("✎");
+        address_button->set_relief(Gtk::RELIEF_NONE);
+        set_accessible(*address_button, "경로 표시줄 편집");
+        address_button->signal_clicked().connect(sigc::mem_fun(*this, &Impl::edit_address));
+        breadcrumb_->pack_start(*address_button, false, false);
         breadcrumb_->show_all();
         show_breadcrumb_end();
-        search_->set_text(display_path(tab.history.current()));
         const int page = notebook_->get_current_page();
         if (page >= 0) {
             auto *label = dynamic_cast<Gtk::Label *>(notebook_->get_tab_label(*tab.state));
@@ -1542,10 +2173,34 @@ class MainWindow::Impl : public sigc::trackable {
                                       breadcrumb_scroll_->get_page_size());
     }
 
-    void activate_search() {
-        const std::string input = search_->get_text();
-        if (!input.empty()) {
-            navigate(input, true);
+    void edit_address() {
+        auto *tab = current_tab();
+        if (tab == nullptr) {
+            return;
+        }
+        location_->set_visible_child("address");
+        address_->set_text(display_path(tab->history.current()));
+        address_->grab_focus();
+        address_->select_region(0, -1);
+    }
+
+    void close_address() {
+        if (completion_cancel_) {
+            completion_cancel_->cancel();
+        }
+        if (location_->get_visible_child_name() == "address") {
+            location_->set_visible_child(in_trash() ? "trash" : "crumbs");
+            if (auto *tab = current_tab()) {
+                focus_folder(*tab);
+            }
+        }
+    }
+
+    void focus_folder(Tab &tab) {
+        if (tab.tree->get_mapped()) {
+            tab.tree->grab_focus();
+        } else {
+            window_.unset_focus();
         }
     }
 
@@ -1554,13 +2209,13 @@ class MainWindow::Impl : public sigc::trackable {
             completion_cancel_->cancel();
         }
         completion_model_->clear();
-        if (!search_->has_focus()) {
+        if (!address_->has_focus()) {
             return;
         }
         completion_cancel_ = Gio::Cancellable::create();
         const Tab *tab = current_tab();
         nav::complete_async(
-            search_->get_text(), tab != nullptr && tab->show_hidden, 20, completion_cancel_,
+            address_->get_text(), tab != nullptr && tab->show_hidden, 20, completion_cancel_,
             sigc::bind(sigc::mem_fun(*this, &Impl::finish_completion), completion_cancel_));
     }
 
@@ -1570,12 +2225,17 @@ class MainWindow::Impl : public sigc::trackable {
             return;
         }
         for (const auto &path : result.value()) {
-            (*completion_model_->append())[completion_columns_.path] = display_path(path);
+            const auto row = *completion_model_->append();
+            row[completion_columns_.path] = display_path(path);
+            row[completion_columns_.raw] = path;
         }
         completion_->complete();
     }
 
     void go_back() {
+        if (leave_results(true)) {
+            return;
+        }
         Tab *tab = current_tab();
         if (tab != nullptr && tab->history.can_back()) {
             tab->pending_history = tab->history;
@@ -1585,6 +2245,7 @@ class MainWindow::Impl : public sigc::trackable {
     }
 
     void go_forward() {
+        leave_results();
         Tab *tab = current_tab();
         if (tab != nullptr && tab->history.can_forward()) {
             tab->pending_history = tab->history;
@@ -1628,6 +2289,9 @@ class MainWindow::Impl : public sigc::trackable {
     }
 
     std::vector<std::string> selected_paths() const {
+        if (center_->get_visible_child_name() != "folders") {
+            return {};
+        }
         const int page = notebook_->get_current_page();
         if (page < 0 || static_cast<std::size_t>(page) >= tabs_.size()) {
             return {};
@@ -1647,7 +2311,7 @@ class MainWindow::Impl : public sigc::trackable {
     }
 
     void update_panel_target(const Tab &tab) {
-        if (shutdown_) {
+        if (shutdown_ || center_->get_visible_child_name() != "folders") {
             return;
         }
         const auto rows = tab.tree->get_selection()->get_selected_rows();
@@ -1667,8 +2331,17 @@ class MainWindow::Impl : public sigc::trackable {
     }
 
     bool on_key(GdkEventKey *event) {
-        if (event->keyval == GDK_KEY_Escape && panel_->cancel_confirmation()) {
+        if (panel_toggle_->get_active() && panel_->text_key(event)) {
             return true;
+        }
+        if (event->keyval == GDK_KEY_Escape) {
+            if (location_->get_visible_child_name() == "address") {
+                close_address();
+                return true;
+            }
+            if (panel_->cancel_confirmation() || leave_results(true)) {
+                return true;
+            }
         }
         const bool control = (event->state & GDK_CONTROL_MASK) != 0U;
         const bool shift = (event->state & GDK_SHIFT_MASK) != 0U;
@@ -1678,6 +2351,10 @@ class MainWindow::Impl : public sigc::trackable {
             return true;
         }
         if (control && event->keyval == GDK_KEY_l) {
+            edit_address();
+            return true;
+        }
+        if (control && event->keyval == GDK_KEY_f) {
             search_->grab_focus();
             search_->select_region(0, -1);
             return true;
@@ -1714,12 +2391,22 @@ class MainWindow::Impl : public sigc::trackable {
         if (dynamic_cast<Gtk::Editable *>(focus) != nullptr) {
             return false;
         }
+        if (center_->get_visible_child_name() != "folders") {
+            return false;
+        }
         if (control && event->keyval == GDK_KEY_d && current_tab()) {
             const auto result = bookmarks_.add(current_tab()->history.current());
             if (!result.ok() || !bookmarks_.save().ok()) {
                 show_band("⚠ 즐겨찾기를 저장할 수 없습니다", false);
             }
             rebuild_bookmarks();
+            return true;
+        }
+        if (event->keyval == GDK_KEY_F4) {
+            const auto paths = selected_paths();
+            if (paths.size() == 1) {
+                edit_text(paths.front());
+            }
             return true;
         }
         if (control && event->keyval == GDK_KEY_e) {
@@ -1766,63 +2453,8 @@ class MainWindow::Impl : public sigc::trackable {
     }
 
     void edit_text(const std::string &path) {
-        auto file = std::make_shared<std::optional<fs::TextFile>>();
-        const auto task =
-            queue_.submit("텍스트 열기", [file, path](job::Job &) -> core::Result<void> {
-                auto result = fs::read_text(path);
-                if (!result.ok()) {
-                    return result.error();
-                }
-                file->emplace(std::move(result.value()));
-                return {};
-            });
-        if (!task.ok()) {
-            show_band("⚠ 파일을 열 수 없습니다", false);
-            return;
-        }
-        editor_jobs_.emplace(task.value(), [this, file, path](job::JobState state) {
-            if (state == job::JobState::DONE && file->has_value()) {
-                show_editor(path, **file);
-            } else {
-                show_band("⚠ 파일을 열 수 없습니다", false);
-            }
-        });
-    }
-
-    void show_editor(const std::string &path, const fs::TextFile &file) {
-        // design-pending: U-6
-        Gtk::Dialog dialog(display_path(path), window_, true);
-        dialog.set_default_size(640, 400);
-        dialog.add_button("취소", Gtk::RESPONSE_CANCEL);
-        dialog.add_button("저장", Gtk::RESPONSE_OK);
-        auto *scroll = Gtk::make_managed<Gtk::ScrolledWindow>();
-        auto *editor = Gtk::make_managed<Gtk::TextView>();
-        set_accessible(*editor, "파일 내용");
-        editor->get_buffer()->set_text(file.contents);
-        scroll->add(*editor);
-        dialog.get_content_area()->pack_start(*scroll, true, true);
-        dialog.show_all();
-        if (dialog.run() != Gtk::RESPONSE_OK) {
-            return;
-        }
-        const auto contents = editor->get_buffer()->get_text();
-        const auto task = queue_.submit(
-            "텍스트 저장", [path, contents, stamp = file.stamp](job::Job &) -> core::Result<void> {
-                const auto result = fs::write_text(path, contents, stamp, fs::Confirmation::NONE);
-                if (!result.ok()) {
-                    return result.error();
-                }
-                return {};
-            });
-        if (!task.ok()) {
-            show_band("⚠ 저장을 시작할 수 없습니다", false);
-            return;
-        }
-        editor_jobs_.emplace(task.value(), [this](job::JobState state) {
-            if (state != job::JobState::DONE) {
-                show_band("⚠ 파일이 바뀌었거나 저장할 수 없습니다", false);
-            }
-        });
+        panel_toggle_->set_active(true);
+        panel_->open_text(path, true);
     }
 
     // The title and optional starting value both use GTK text.
@@ -1847,7 +2479,7 @@ class MainWindow::Impl : public sigc::trackable {
 
     void create_entry(bool directory) {
         Tab *tab = current_tab();
-        if (!can_modify(tab)) {
+        if (!can_modify(tab) || center_->get_visible_child_name() != "folders") {
             return;
         }
         const auto name = ask_name(directory ? "새 폴더" : "새 파일");
@@ -1887,6 +2519,9 @@ class MainWindow::Impl : public sigc::trackable {
         }
         if (!permanent) {
             const auto result = fs::trash_many(queue_, paths);
+            if (result.ok()) {
+                trash_jobs_.insert(result.value());
+            }
             handle_job_submit(result, "휴지통으로 이동");
             return;
         }
@@ -1906,7 +2541,8 @@ class MainWindow::Impl : public sigc::trackable {
 
     void paste_clipboard() {
         Tab *tab = current_tab();
-        if (!can_modify(tab) || clipboard_.empty()) {
+        if (!can_modify(tab) || clipboard_.empty() ||
+            center_->get_visible_child_name() != "folders") {
             return;
         }
         fs::ConflictPolicy policy = fs::ConflictPolicy::FAIL;
@@ -2001,21 +2637,31 @@ class MainWindow::Impl : public sigc::trackable {
         job_label_->set_text(display_path(progress.current_path));
     }
 
-    void on_job_state(job::JobId id, job::JobState state, const std::optional<core::Error> &) {
+    void on_job_state(job::JobId id, job::JobState state, const std::optional<core::Error> &error) {
         if (state != job::JobState::DONE && state != job::JobState::FAILED &&
             state != job::JobState::CANCELLED) {
             return;
         }
-        const auto editor = editor_jobs_.find(id);
-        if (editor != editor_jobs_.end()) {
-            auto done = std::move(editor->second);
-            editor_jobs_.erase(editor);
+        if (panel_->finish_text_job(id, error)) {
             queue_.forget(id);
-            done(state);
             return;
         }
         const auto results = queue_.results(id);
+        const bool trash_job = trash_jobs_.erase(id) != 0U;
+        if (trash_job) {
+            refresh_trash();
+        }
         if (state == job::JobState::FAILED) {
+            if (in_trash() && trash_job) {
+                const auto conflict =
+                    std::find_if(results.begin(), results.end(), [](const auto &item) {
+                        return item.error && item.error->code == core::ErrorCode::EXISTS;
+                    });
+                if (conflict != results.end()) {
+                    trash_conflict_path_ = conflict->path;
+                    show_trash_conflict();
+                }
+            }
             show_band("⚠ 일부 항목을 처리하지 못했습니다 (" + std::to_string(results.size()) +
                           "개 결과)",
                       false);
@@ -2682,9 +3328,65 @@ class MainWindow::Impl : public sigc::trackable {
     Gtk::Box *breadcrumb_ = nullptr;
     Glib::RefPtr<Gtk::Adjustment> breadcrumb_scroll_;
     Gtk::SearchEntry *search_ = nullptr;
+    Gtk::Stack *location_ = nullptr;
+    Gtk::Entry *address_ = nullptr;
+    Gtk::Stack *center_ = nullptr;
+    std::unique_ptr<search::Searcher> searcher_ = std::make_unique<search::Searcher>();
+    search::SearchId search_id_ = 0;
+    std::optional<search::Summary> search_summary_;
+    std::map<Glib::ustring, std::pair<Gtk::ToggleButton *, std::size_t>> search_extensions_;
+    Gtk::Box *search_chips_ = nullptr;
+    Gtk::Button *search_clear_ = nullptr;
+    Gtk::Label *search_title_ = nullptr;
+    Gtk::Label *search_status_ = nullptr;
+    Gtk::Spinner *search_spinner_ = nullptr;
+    Gtk::Button *search_back_ = nullptr;
+    Gtk::TreeView *results_tree_ = nullptr;
+    Gtk::Stack *search_state_ = nullptr;
+    Gtk::Label *search_empty_ = nullptr;
+    Glib::RefPtr<Gtk::ListStore> search_model_;
+    Glib::RefPtr<Gtk::TreeModelFilter> search_filter_;
+    std::string search_root_;
+    Glib::ustring search_query_;
+    std::size_t search_count_ = 0;
+    struct ResultColumns : Gtk::TreeModel::ColumnRecord {
+        ResultColumns() {
+            add(key);
+            add(name);
+            add(markup);
+            add(location);
+            add(size);
+            add(date);
+            add(extension);
+            add(timestamp);
+        }
+        Gtk::TreeModelColumn<std::string> key;
+        Gtk::TreeModelColumn<Glib::ustring> name, markup, location, size, date, extension;
+        Gtk::TreeModelColumn<std::int64_t> timestamp;
+    } result_columns_;
+
+    Gtk::Button *trash_button_ = nullptr;
+    Gtk::Button *trash_restore_ = nullptr;
+    Gtk::Button *trash_delete_ = nullptr;
+    Gtk::Button *trash_empty_ = nullptr;
+    Gtk::Label *trash_status_ = nullptr;
+    Gtk::Label *trash_message_ = nullptr;
+    Gtk::TreeView *trash_tree_ = nullptr;
+    Gtk::Box *trash_conflict_ = nullptr;
+    Gtk::Stack *trash_state_ = nullptr;
+    Glib::RefPtr<Gtk::ListStore> trash_model_;
+    sigc::connection trash_selection_changed_;
+    Glib::RefPtr<Gio::Cancellable> trash_cancel_;
+    std::unordered_set<job::JobId> trash_jobs_;
+    std::unordered_map<std::string, trash::Item> trash_items_;
+    std::string trash_conflict_path_;
     struct CompletionColumns : Gtk::TreeModel::ColumnRecord {
-        CompletionColumns() { add(path); }
+        CompletionColumns() {
+            add(path);
+            add(raw);
+        }
         Gtk::TreeModelColumn<Glib::ustring> path;
+        Gtk::TreeModelColumn<std::string> raw;
     } completion_columns_;
     Glib::RefPtr<Gtk::EntryCompletion> completion_;
     Glib::RefPtr<Gtk::ListStore> completion_model_;
@@ -2761,7 +3463,6 @@ class MainWindow::Impl : public sigc::trackable {
     std::optional<job::JobId> active_job_;
     std::map<job::JobId, Glib::ustring> file_jobs_;
     bool job_pulse_ = false;
-    std::unordered_map<job::JobId, std::function<void(job::JobState)>> editor_jobs_;
     std::vector<std::unique_ptr<Gtk::Window>> chart_windows_;
     std::vector<CandleChart *> detached_charts_;
     std::unique_ptr<Tray> tray_;

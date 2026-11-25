@@ -3,7 +3,7 @@ target_include_directories(filescope_ui PUBLIC ${PROJECT_SOURCE_DIR}/src)
 target_link_libraries(filescope_ui
   PUBLIC PkgConfig::GTKMM
   PRIVATE filescope_core filescope_job filescope_fs filescope_mon filescope_nav filescope_dash
-          filescope_diff filescope_his PkgConfig::AYATANA)
+          filescope_diff filescope_his filescope_search filescope_trash PkgConfig::AYATANA)
 filescope_configure_target(filescope_ui)
 
 foreach(state active paused warning)
