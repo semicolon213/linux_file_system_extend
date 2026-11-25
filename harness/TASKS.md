@@ -328,7 +328,7 @@ R2 의존 순서: {R2-T00, R2-T01 병렬} → {R2-T02(T00 뒤), R2-T03, R2-T04, 
 ## R2-T02 fs R2 보조 API
 
 - Task ID / 요구사항 ID: R2-T02 / HIS-011·HIS-012·TRASH-005·TRASH-006의 파일 쓰기 기반 (DESIGN 인터페이스 §3 "R2 추가")
-- 상태: BACKLOG (R2 계약 승인과 R2-T00 병합 후 READY. 같은 fs 파일)
+- 상태: VERIFY (e81de30 병합, R2 묶음 QA 대기)
 - 목표: `fs::install_file`, `fs::remove_tree`를 계약대로 더한다. remove_tree는 기존 영구 삭제 코드를 쓴다.
 - 제외 범위: 기존 함수 동작 변경, his·trash 구현.
 - 기준 브랜치 / SHA: R2-T00 통합 커밋
@@ -349,7 +349,7 @@ R2 의존 순서: {R2-T00, R2-T01 병렬} → {R2-T02(T00 뒤), R2-T03, R2-T04, 
 ## R2-T03 diff
 
 - Task ID / 요구사항 ID: R2-T03 / HIS-007, HIS-008(텍스트 줄 Diff, md 포함), HIS-009(이미지 비교 데이터)
-- 상태: BACKLOG (R2 계약 승인과 R2-T01 병합 후 READY)
+- 상태: VERIFY (35111c2 병합, R2 묶음 QA 대기)
 - 목표: `src/diff`를 DESIGN 인터페이스 §9대로 구현한다(classify, Myers 줄 Diff, 격자 이미지 비교). GTK·파일 I/O·스레드 없음.
 - 제외 범위: docx·odt 내부 비교(R3), 단어 단위 Diff, 이미지 디코드(ui), 화면.
 - 기준 브랜치 / SHA: R2-T01 통합 커밋
@@ -372,7 +372,7 @@ R2 의존 순서: {R2-T00, R2-T01 병렬} → {R2-T02(T00 뒤), R2-T03, R2-T04, 
 ## R2-T04 his 저장소
 
 - Task ID / 요구사항 ID: R2-T04 / HIS-001(SQLite 이력), NFR-014(강제 종료 후 integrity_check), HIS-005·HIS-007·HIS-012의 저장·조회 기반
-- 상태: BACKLOG (ADR-0009 승인과 R2-T01 병합 후 READY)
+- 상태: VERIFY (a0a85b1 병합, R2 묶음 QA 대기)
 - 목표: `his::History`의 저장 부분을 DESIGN 인터페이스 §8과 DB 스키마 §1~§7대로 구현한다: open(데이터 디렉터리·권한·PRAGMA·migration·손상 처리), his 스레드·명령 큐·Dispatcher, record_events(events·sessions·gaps 기록), 블롭 저장소와 캡처 루틴(DB §5, 테스트 입구로 호출), 보관 한도 정리, 복구·orphan 정리, load_history_async·list_deleted_async·read_content_async, 삭제 표시, shutdown, `his_testing.hpp`.
 - 제외 범위: 이벤트별 캡처 예약·지연·기준 스냅샷·제외 경로 판단·note_pause·restore·recover(R2-T05), 화면.
 - 기준 브랜치 / SHA: R2-T01 통합 커밋
@@ -397,7 +397,7 @@ R2 의존 순서: {R2-T00, R2-T01 병렬} → {R2-T02(T00 뒤), R2-T03, R2-T04, 
 ## R2-T05 his 자동 버전·복원
 
 - Task ID / 요구사항 ID: R2-T05 / HIS-005(자동 버전), HIS-011(버전 복원), HIS-012(삭제 복구), E09(스냅샷 없는 삭제)
-- 상태: BACKLOG (R2-T02·R2-T04 병합 후 READY)
+- 상태: READY (R2-T02·R2-T04 병합됨)
 - 목표: 이벤트 §10 표의 처리(캡처 예약과 300ms 합치기, synthetic CREATE, 이동 계열), scan_root 기준 스냅샷(한도, 조회와 번갈아 처리), note_pause, `is_excluded`(DB §8), restore_async(PRE_RESTORE 캡처 → `fs::install_file`), recover_async, signal_version_added.
 - 제외 범위: 이름 추적(HIS-015), 다른 위치 복원, 디렉터리 스냅샷·복원(HIS-013/014), 화면.
 - 기준 브랜치 / SHA: R2-T04 통합 커밋(R2-T02 포함)
@@ -444,7 +444,7 @@ R2 의존 순서: {R2-T00, R2-T01 병렬} → {R2-T02(T00 뒤), R2-T03, R2-T04, 
 ## R2-T07 trash
 
 - Task ID / 요구사항 ID: R2-T07 / TRASH-001, TRASH-002, TRASH-003, TRASH-005, TRASH-006
-- 상태: BACKLOG (R2 계약 승인과 R2-T01·R2-T02 병합 후 READY)
+- 상태: READY (R2-T01·R2-T02 병합됨)
 - 목표: `src/trash`를 DESIGN 인터페이스 §11대로 구현한다(홈 휴지통 목록, 원위치 복원, 선택 삭제, 비우기).
 - 제외 범위: 다른 마운트 휴지통(E-13), 지정 위치 복원·복원 충돌 처리·자동 정리(TRASH-004/011/009, R3), 화면.
 - 기준 브랜치 / SHA: R2-T02 통합 커밋
@@ -466,7 +466,7 @@ R2 의존 순서: {R2-T00, R2-T01 병렬} → {R2-T02(T00 뒤), R2-T03, R2-T04, 
 ## R2-T08 search
 
 - Task ID / 요구사항 ID: R2-T08 / SRC-001, SRC-003, SRC-004
-- 상태: BACKLOG (R2 계약 승인과 R2-T01 병합 후 READY)
+- 상태: VERIFY (51cac30 병합, R2 묶음 QA 대기)
 - 목표: `src/search` `search::Searcher`를 DESIGN 인터페이스 §10대로 구현한다(색인 없는 재귀 순회, 이름 부분 일치, 확장자 거르기, 취소, 접근 불가 기록, 10Hz 묶음 전달).
 - 제외 범위: 내용·정규식·glob·크기·날짜 조건과 색인(SRC-005~015, R3), 화면.
 - 기준 브랜치 / SHA: R2-T01 통합 커밋

@@ -57,7 +57,13 @@ GLib unit, 실제 임시 디렉터리 integration, Xvfb GUI smoke 및 실제 Ubu
 
 1만/10만 파일 fixture, 초당 1000 이벤트, 10GB 복사(여유 용량 확인), 24시간 soak. monotonic clock으로 P50/P95/P99, RSS, CPU, queue depth, overflow 기록. NFR 목표와 비교. VM/호스트 사양 및 반복 횟수 기록.
 
-기준 성능: 현재 측정 없음. SHA, Ubuntu, kernel, CPU, RAM, FS, fixture, 명령, 반복 횟수, 원시 결과, P95를 최초 실행 시 기록. 미측정은 NOT_RUN.
+기준 성능 기록 항목: SHA, Ubuntu, kernel, CPU, RAM, FS, fixture, 명령, 반복 횟수, 원시 결과, P95를 최초 실행 시 기록. 미측정은 NOT_RUN.
+
+| 측정 | SHA | 환경 | 결과 |
+| --- | --- | --- | --- |
+| R2-T04 his 기록 부하(G8), 1회 | a0a85b1 | WSL Ubuntu-24.04, 디버그 빌드, ext4 임시 디렉터리 | 1,000건/초 10초 10,000건 전부 기록, 미기록 최대 100, 커밋 지연 P95 7.429ms(100건 단위 제출→flush, 단조 시계), 체크포인트 후 DB 1,466,368B, HIS_BACKLOG 0. 1MiB 블롭 100개 캡처 0.769초(130.12MiB/s) |
+| 기준 스냅샷 2만 파일 | - | - | NOT_RUN (R2-T05) |
+| R2-T08 1만 파일 재귀 검색, 작업자 보고 | 51cac30 | WSL Ubuntu-24.04, 디버그 빌드 | 2.018초, signal_hits 20묶음 |
 
 ## 6. 장애 주입
 
