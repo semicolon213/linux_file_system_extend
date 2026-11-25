@@ -41,6 +41,7 @@
 | R2-T10 ui 트레이·요약 창·일시 정지 | VERIFY (cde40b1 병합, R2 묶음 QA 대기) | R2-T06, R2-T09 |
 | R2-T11 ui 검색·휴지통·미리보기 | VERIFY (c08cce1 병합, R2 묶음 QA 대기) | R2-T07, R2-T08, R2-T10, U-10 시안 확정 |
 | R2-F01 his 종료 테스트 간헐 실패, GCC 고정 | VERIFY (f6b1cd2 병합, R2 묶음 QA 대기) | R2-T05 |
+| R2-F02 트레이 호스트 없을 때 AppIndicator 회피 (QA N1) | READY | R2 QA |
 
 의존 순서: R0-002 → R1-T01 → {R1-T02, R1-T04, R1-T05, R1-T07 병렬} → R1-T03(T02 필요) → R1-T06. 독립 QA는 R1 전체를 묶어 한 번 한다(R0-002 포함, PROGRESS 미결 사항 E-6).
 
@@ -574,4 +575,15 @@ R2 의존 순서: {R2-T00, R2-T01 병렬} → {R2-T02(T00 뒤), R2-T03, R2-T04, 
 - 변경 금지: 다른 모듈, scripts, docs, harness, 억제 파일
 - 수용 조건: 수정 후 TSan 빌드에서 `test_his_versions -p /his/versions/shutdown`을 200회 반복해 실패 0. 모든 preset으로 configure한 CMakeCache의 CMAKE_CXX_COMPILER가 g++.
 - 필수 테스트 / 게이트: G1~G6, tsan 10회
+- 공통: WSL Ubuntu-24.04에서 빌드·테스트, Codex 문서 수정 금지, 커밋에 Co-Authored-By 금지.
+
+## R2-F02 트레이 호스트 없을 때 AppIndicator 범위 밖 읽기 회피 (R2 QA N1)
+
+- Task ID / 요구사항 ID: R2-F02 / docs/qa/r2-qa-report.md R2-N1(Medium)
+- 상태: READY
+- 목표: `src/ui/tray.cpp`의 `app_indicator_new_with_path(..., "<exe 디렉터리>/tray-icons")`를 `app_indicator_new`로 바꾸고, 아이콘 검색 경로는 `gtk_icon_theme_append_search_path`(기본 아이콘 테마) 등으로 준다. 트레이 호스트가 없을 때 ASan SEGV(libayatana-appindicator3 0.5.93 +0x7da4)가 사라지고, 호스트가 있을 때 아이콘 이름·설명·상태 전환은 그대로여야 한다.
+- 허용 파일: `src/ui/**`, `tests/ui/**`
+- 변경 금지: 다른 모듈, 루트 빌드 파일, scripts, 억제 파일(SEGV를 억제로 덮지 않는다), docs, harness
+- 수용 조건: QA 재현(보고서 R2-N1의 `build/qa-r2/exp/gui_san.sh` 방식: ASan 빌드, dbus-run-session, 트레이 호스트 없음, Wayland와 Xvfb)에서 수정 전 크래시 재현 → 수정 후 각 10회 크래시 0. 호스트 있는 `tests/ui/run.sh ... tray` 통과(아이콘 IconName·IconThemePath 기대값은 바뀐 방식에 맞게). `make verify`·`make ui-interaction` 0. 회피가 안 되면 원인과 대안을 ask.
+- 필수 테스트 / 게이트: G1~G6, ui-interaction, 위 ASan 반복
 - 공통: WSL Ubuntu-24.04에서 빌드·테스트, Codex 문서 수정 금지, 커밋에 Co-Authored-By 금지.
