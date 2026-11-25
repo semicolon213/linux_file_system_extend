@@ -5,10 +5,14 @@ import sqlite3
 import sys
 import time
 
+import gi
+
 from history_interaction import capture, diff_text
 from interaction import (X11, click, close, descendants, display, find, force_overflow,
                          key, named, row, run, showing, wait)
-from gi.repository import Atspi, Gio, GLib
+
+gi.require_version("Gtk", "3.0")
+from gi.repository import Atspi, Gio, GLib, Gtk
 
 
 WATCHER = "org.kde.StatusNotifierWatcher"
@@ -105,12 +109,19 @@ def focus_window(node):
     X11.XSync(display, False)
 
 
-def exercise(app, host, fixture, watched):
+def exercise(app, host, fixture, watched, icon_dir):
     wait("StatusNotifier item registers", host.registered)
     active = host.props()
     assert active["IconName"] == "filescope-active-symbolic", active
     assert active["IconAccessibleDesc"] == "FileScope: 감시 중", active
-    assert (Path(active["IconThemePath"]) / (active["IconName"] + ".svg")).is_file()
+    assert Path(active["IconThemePath"]) == icon_dir, active
+    theme = Gtk.IconTheme.new()
+    theme.set_search_path([active["IconThemePath"]])
+    for state in ("active", "paused", "warning"):
+        name = f"filescope-{state}-symbolic"
+        icon = theme.lookup_icon(name, 18, 0)
+        assert icon is not None and Path(icon.get_filename()) == icon_dir / f"{name}.svg", name
+        assert icon.load_icon().get_has_alpha(), name
     rows = host.layout()
     _, status, _ = rows[0]
     _, root, _ = rows[1]
@@ -244,10 +255,10 @@ def exercise(app, host, fixture, watched):
 
 
 if __name__ == "__main__":
-    binary = str(Path(sys.argv[1]).resolve())
+    binary = Path(sys.argv[1]).resolve()
     fixture = Path(sys.argv[2])
     watched = fixture / "home/child/previous.txt"
     watched.parent.mkdir()
     watched.write_text("baseline\n")
     host = StatusHost()
-    run(binary, lambda app: exercise(app, host, fixture, watched))
+    run(binary, lambda app: exercise(app, host, fixture, watched, binary.parent / "tray-icons"))

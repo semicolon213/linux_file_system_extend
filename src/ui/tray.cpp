@@ -159,15 +159,14 @@ class Tray::Impl {
   public:
     Impl(Activate activate, sigc::slot<void()> disconnected)
         : activate_(std::move(activate)), disconnected_(std::move(disconnected)),
-          indicator_(app_indicator_new_with_path(
-                         "filescope", "filescope-active-symbolic",
-                         APP_INDICATOR_CATEGORY_APPLICATION_STATUS,
-                         Glib::build_filename(
-                             Glib::path_get_dirname(Glib::convert_return_gchar_ptr_to_stdstring(
-                                 g_file_read_link("/proc/self/exe", nullptr))),
-                             "tray-icons")
-                             .c_str()),
+          indicator_(app_indicator_new("filescope", "filescope-active-symbolic",
+                                       APP_INDICATOR_CATEGORY_APPLICATION_STATUS),
                      g_object_unref) {
+        const auto icon_path =
+            Glib::build_filename(Glib::path_get_dirname(Glib::convert_return_gchar_ptr_to_stdstring(
+                                     g_file_read_link("/proc/self/exe", nullptr))),
+                                 "tray-icons");
+        app_indicator_set_icon_theme_path(indicator_.get(), icon_path.c_str());
         app_indicator_set_title(indicator_.get(), "FileScope");
         app_indicator_set_menu(indicator_.get(), menu_.gobj());
         connection_signal_ =
