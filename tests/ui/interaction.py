@@ -380,6 +380,19 @@ def exercise(app, home, fixture):
     button("상위 폴더로 이동")
     print("PASS watch-start and root-deletion bands", flush=True)
 
+    sorting = fixture / "sorting"
+    sorting.mkdir()
+    for name in ("b", "A"):
+        (sorting / name).mkdir()
+    for name in ("file-1", "file-2", "file-10", "File-3", os.fsdecode(b"z-\xff")):
+        (sorting / name).touch()
+    navigate(sorting)
+    table = files().get_table_iface()
+    wait("seven sorted rows including invalid UTF-8", lambda: table.get_n_rows() == 7)
+    actual = [table.get_accessible_at(i, 0).get_name() for i in range(7)]
+    assert actual == ["A", "b", "file-1", "file-2", "File-3", "file-10", "z-\ufffd"], actual
+    print("PASS folders first, natural filename order and invalid UTF-8", flush=True)
+
     close(app)
 
 

@@ -1,10 +1,14 @@
 #include "fs/fs.hpp"
+#include "fs/fs_testing.hpp"
 
 #include "test_support.hpp"
 
+#include <chrono>
+#include <condition_variable>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <mutex>
 #include <string>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -249,22 +253,25 @@ void test_move_overwrite() {
     g_assert_true(read_file(target) == "new file");
 }
 
-void test_move_cross_device() {
-    filescope::test::TestEnvironment environment;
+std::string cross_device_directory(const std::string &source_root) {
     struct stat source_status {};
-    g_assert_cmpint(stat(environment.root().c_str(), &source_status), ==, 0);
-    std::string destination;
+    g_assert_cmpint(stat(source_root.c_str(), &source_status), ==, 0);
     const std::string runtime = "/run/user/" + std::to_string(getuid());
     for (const char *parent : {runtime.c_str(), "/mnt/wsl", "/mnt/c", "/media", "/run/media"}) {
         struct stat status {};
         if (stat(parent, &status) == 0 && status.st_dev != source_status.st_dev) {
             std::string candidate = join(parent, "filescope-exdev-XXXXXX");
             if (mkdtemp(candidate.data()) != nullptr) {
-                destination = std::move(candidate);
-                break;
+                return candidate;
             }
         }
     }
+    return {};
+}
+
+void test_move_cross_device() {
+    filescope::test::TestEnvironment environment;
+    const std::string destination = cross_device_directory(environment.root());
     if (destination.empty()) {
         g_test_skip("No writable alternate device among candidate mount points");
         return;
@@ -322,6 +329,134 @@ void test_move_cross_device() {
     g_assert_false(std::filesystem::exists(join(target, "old")));
     g_assert_true(read_file(join(target, "nested/file")) == "preserved");
     std::filesystem::remove_all(destination);
+}
+
+void test_move_cross_device_conflict() {
+    filescope::test::TestEnvironment environment;
+    const std::string source = join(environment.root(), "a");
+    std::string destination = cross_device_directory(environment.root());
+    if (destination.empty()) {
+        destination = join(environment.root(), "destination");
+        make_directory(destination);
+        filescope::fs::testing::force_next_cross_device_move();
+        g_test_message("EXDEV forced: no writable alternate device");
+    } else {
+        g_test_message("EXDEV from a real alternate device: %s", destination.c_str());
+    }
+    const std::string target = join(destination, "a");
+    make_directory(source);
+    make_directory(join(source, "sub"));
+    write_file(join(source, "x"), "x source");
+    write_file(join(source, "sub/y"), "y source");
+    write_file(join(source, "changed"), "old");
+    filescope::fs::testing::set_source_removal_hook([](const std::string &path) {
+        write_file(join(path, "sub/z"), "new file");
+        write_file(join(path, "changed"), "updated file");
+    });
+    JobQueue queue;
+    const auto moved =
+        filescope::fs::move(queue, {source}, destination, ConflictPolicy::FAIL, Confirmation::NONE);
+    g_assert_true(moved.ok());
+    g_assert_true(wait_for_terminal(queue, moved.value()) == JobState::FAILED);
+    const auto results = queue.results(moved.value());
+    for (const auto &name : {"sub/z", "changed"}) {
+        bool conflict = false;
+        for (const auto &item : results) {
+            conflict |= item.path == join(source, name) && item.error &&
+                        item.error->code == ErrorCode::CONFLICT;
+        }
+        g_assert_true(conflict);
+    }
+    g_assert_true(read_file(join(target, "x")) == "x source");
+    g_assert_true(read_file(join(target, "sub/y")) == "y source");
+    g_assert_true(read_file(join(target, "changed")) == "old");
+    g_assert_false(std::filesystem::exists(join(target, "sub/z")));
+    g_assert_false(std::filesystem::exists(join(source, "x")));
+    g_assert_false(std::filesystem::exists(join(source, "sub/y")));
+    g_assert_true(read_file(join(source, "sub/z")) == "new file");
+    g_assert_true(read_file(join(source, "changed")) == "updated file");
+    std::filesystem::remove_all(destination);
+}
+
+void test_copy_directory_overwrite() {
+    filescope::test::TestEnvironment environment;
+    const std::string source = join(environment.root(), "d");
+    const std::string destination = join(environment.root(), "destination");
+    const std::string target = join(destination, "d");
+    make_directory(source);
+    make_directory(destination);
+    make_directory(target);
+    g_assert_cmpint(chmod(target.c_str(), 0750), ==, 0);
+    write_file(join(target, "old-a"), "old A");
+    write_file(join(target, "old-b"), "old B");
+    write_file(join(source, "new-a"), "new A");
+    write_file(join(source, "new-b"), "new B");
+    static std::mutex pause_mutex;
+    static std::condition_variable resume;
+    static bool paused = false;
+    JobQueue queue;
+    const auto copy = [&](bool cancel = false) {
+        const auto submitted = filescope::fs::copy(
+            queue, {source}, destination, ConflictPolicy::OVERWRITE, Confirmation::CONFIRMED);
+        g_assert_true(submitted.ok());
+        if (cancel) {
+            g_assert_true(filescope::test::wait_until(
+                [] {
+                    const std::lock_guard<std::mutex> lock(pause_mutex);
+                    return paused;
+                },
+                5000));
+            {
+                const std::lock_guard<std::mutex> lock(pause_mutex);
+                g_assert_true(queue.cancel(submitted.value()));
+            }
+            resume.notify_one();
+        }
+        const auto state = wait_for_terminal(queue, submitted.value());
+        g_assert_true(std::distance(std::filesystem::directory_iterator(destination),
+                                    std::filesystem::directory_iterator()) == 1);
+        return state;
+    };
+    const auto check_original = [&] {
+        g_assert_true(read_file(join(target, "old-a")) == "old A");
+        g_assert_true(read_file(join(target, "old-b")) == "old B");
+        g_assert_true(std::distance(std::filesystem::directory_iterator(target),
+                                    std::filesystem::directory_iterator()) == 2);
+        struct stat status {};
+        g_assert_cmpint(stat(target.c_str(), &status), ==, 0);
+        g_assert_cmpint(status.st_mode & 0777, ==, 0750);
+    };
+    filescope::fs::testing::set_copy_write_hook([](filescope::job::Job &) {
+        static unsigned writes = 0;
+        if (++writes == 2) {
+            filescope::fs::testing::fail_next_write(ErrorCode::NO_SPACE);
+        }
+    });
+    g_assert_true(copy() == JobState::FAILED);
+    filescope::fs::testing::set_copy_write_hook(nullptr);
+    check_original();
+
+    const std::string large(std::size_t{2} * 64U * 1024U, 'x');
+    write_file(join(source, "new-a"), large);
+    write_file(join(source, "new-b"), large);
+    filescope::fs::testing::set_copy_write_hook([](filescope::job::Job &job) {
+        static unsigned writes = 0;
+        if (++writes == 2) {
+            std::unique_lock<std::mutex> lock(pause_mutex);
+            paused = true;
+            g_assert_true(resume.wait_for(lock, std::chrono::seconds(5),
+                                          [&job] { return job.is_cancelled(); }));
+        }
+    });
+    g_assert_true(copy(true) == JobState::CANCELLED);
+    filescope::fs::testing::set_copy_write_hook(nullptr);
+    check_original();
+
+    g_assert_true(copy() == JobState::DONE);
+    g_assert_true(read_file(join(target, "new-a")) == large);
+    g_assert_true(read_file(join(target, "new-b")) == large);
+    g_assert_false(std::filesystem::exists(join(target, "old-a")));
+    g_assert_false(std::filesystem::exists(join(target, "old-b")));
 }
 
 void test_delete_partial_permission_failure() {
@@ -410,6 +545,8 @@ int main(int argc, char **argv) {
     g_test_add_func("/fs/integration/move-delete", test_move_and_delete);
     g_test_add_func("/fs/integration/move-overwrite", test_move_overwrite);
     g_test_add_func("/fs/integration/move-cross-device", test_move_cross_device);
+    g_test_add_func("/fs/integration/move-cross-device-conflict", test_move_cross_device_conflict);
+    g_test_add_func("/fs/integration/copy-directory-overwrite", test_copy_directory_overwrite);
     g_test_add_func("/fs/integration/delete-partial", test_delete_partial_permission_failure);
     g_test_add_func("/fs/integration/cancel", test_copy_cancellation_cleanup);
     g_test_add_func("/fs/integration/trash", test_trash);

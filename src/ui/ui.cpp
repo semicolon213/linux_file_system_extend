@@ -1277,13 +1277,19 @@ class MainWindow::Impl : public sigc::trackable {
         tab->rows.clear();
         tab->model->clear();
         auto entries = std::move(result.value());
+        const auto filename_key = [](const std::string &name) {
+            const auto folded = Glib::ustring(display_path(name)).casefold();
+            return Glib::convert_return_gchar_ptr_to_stdstring(
+                g_utf8_collate_key_for_filename(folded.c_str(), -1));
+        };
         std::sort(entries.begin(), entries.end(),
-                  [](const core::Entry &left, const core::Entry &right) {
+                  [&filename_key](const core::Entry &left, const core::Entry &right) {
                       if ((left.type == core::FileType::DIRECTORY) !=
                           (right.type == core::FileType::DIRECTORY)) {
                           return left.type == core::FileType::DIRECTORY;
                       }
-                      return left.name < right.name;
+                      const int order = filename_key(left.name).compare(filename_key(right.name));
+                      return order == 0 ? left.name < right.name : order < 0;
                   });
         for (const auto &entry : entries) {
             append_entry(*tab, entry);
