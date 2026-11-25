@@ -1,0 +1,6 @@
+add_executable(test_diff test_diff.cpp)
+target_link_libraries(test_diff PRIVATE filescope_diff PkgConfig::GLIB)
+target_compile_definitions(test_diff PRIVATE FILESCOPE_DIFF_GOLDEN_DIR="${CMAKE_CURRENT_SOURCE_DIR}/golden")
+filescope_configure_target(test_diff)
+filescope_add_test(test_diff test_diff)
+set_tests_properties(test_diff PROPERTIES LABELS unit)
