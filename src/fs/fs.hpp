@@ -55,6 +55,15 @@ core::Result<FileStamp> write_text(const std::string &path, const std::string &c
                                    const std::optional<FileStamp> &expected,
                                    Confirmation confirmation);
 
+// [any] Atomically installs a regular file after checking the expected target stamp.
+core::Result<FileStamp> install_file(const std::string &target, const std::string &source,
+                                     const std::optional<FileStamp> &expected,
+                                     std::optional<std::uint32_t> mode,
+                                     const Glib::RefPtr<Gio::Cancellable> &cancellable = {});
+// [any] Recursively removes an entry after confirmation and returns the first error.
+core::Result<void> remove_tree(const std::string &path, Confirmation confirmation,
+                               const Glib::RefPtr<Gio::Cancellable> &cancellable = {});
+
 // [main] Submits recursive copies after validating all paths.
 core::Result<job::JobId> copy(job::JobQueue &queue, const std::vector<std::string> &sources,
                               const std::string &dest_dir, ConflictPolicy policy,

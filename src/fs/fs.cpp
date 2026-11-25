@@ -188,12 +188,8 @@ core::Result<void> revalidate_source(const Snapshot &snapshot, core::PathOp oper
     return validate_write_path(snapshot.path, operation);
 }
 
-core::Result<void> write_all(int fd, const char *data, std::size_t size, const std::string &path) {
-    const int injected = next_write_error.exchange(0);
-    if (injected != 0) {
-        return core::make_error(static_cast<core::ErrorCode>(injected),
-                                "Injected file write failure");
-    }
+core::Result<void> write_bytes(int fd, const char *data, std::size_t size,
+                               const std::string &path) {
     std::size_t written = 0;
     while (written < size) {
         const ssize_t count = write(fd, data + written, size - written);
@@ -207,6 +203,15 @@ core::Result<void> write_all(int fd, const char *data, std::size_t size, const s
         written += static_cast<std::size_t>(count);
     }
     return {};
+}
+
+core::Result<void> write_all(int fd, const char *data, std::size_t size, const std::string &path) {
+    const int injected = next_write_error.exchange(0);
+    if (injected != 0) {
+        return core::make_error(static_cast<core::ErrorCode>(injected),
+                                "Injected file write failure");
+    }
+    return write_bytes(fd, data, size, path);
 }
 
 core::Result<void> rename_entry(const Entry &source, const Entry &target, bool replace) {
@@ -240,6 +245,13 @@ struct Removal {
     job::Job *job = nullptr;
     const CopiedEntries *copied = nullptr;
     bool private_copy = false;
+    const Gio::Cancellable *cancellable = nullptr;
+    bool continue_on_error = false;
+
+    bool is_cancelled() const {
+        return (job != nullptr && job->is_cancelled()) ||
+               (cancellable != nullptr && cancellable->is_cancelled());
+    }
 };
 
 core::Error move_conflict() {
@@ -278,6 +290,9 @@ core::Result<void> remove_directory(const Entry &path, const FileStatus &status,
         const dirent *entry = readdir(directory.get());
         if (entry == nullptr) {
             if (errno != 0) {
+                if (removal.continue_on_error && child_error) {
+                    return *child_error;
+                }
                 return core::error_from_errno(errno, "readdir", path.path);
             }
             break;
@@ -288,6 +303,15 @@ core::Result<void> remove_directory(const Entry &path, const FileStatus &status,
         }
         const Entry child = path.child(entry->d_name, dirfd(directory.get()));
         if (const auto removed = remove_entry(child, removal); !removed) {
+            if (removal.continue_on_error) {
+                if (removed.error().code == core::ErrorCode::CANCELLED) {
+                    return removed.error();
+                }
+                if (!child_error) {
+                    child_error = removed.error();
+                }
+                continue;
+            }
             if (removal.copied == nullptr || is_fatal(removed.error().code)) {
                 return removed.error();
             }
@@ -303,7 +327,7 @@ core::Result<void> remove_directory(const Entry &path, const FileStatus &status,
     if (child_error) {
         return *child_error;
     }
-    if (removal.job != nullptr && removal.job->is_cancelled()) {
+    if (removal.is_cancelled()) {
         return cancelled_error();
     }
     FileStatus current;
@@ -323,7 +347,7 @@ core::Result<void> remove_directory(const Entry &path, const FileStatus &status,
 }
 
 core::Result<void> remove_entry(const Entry &path, const Removal &removal) {
-    if (removal.job != nullptr && removal.job->is_cancelled()) {
+    if (removal.is_cancelled()) {
         return cancelled_error();
     }
     FileStatus status;
@@ -1050,6 +1074,157 @@ core::Result<FileStamp> write_text(const std::string &path, const std::string &c
         return read.error();
     }
     return stamp_from_stat(saved);
+}
+
+// NOLINTNEXTLINE(bugprone-easily-swappable-parameters): public contract fixes the order.
+core::Result<FileStamp> install_file(const std::string &target, const std::string &source,
+                                     const std::optional<FileStamp> &expected,
+                                     std::optional<std::uint32_t> mode,
+                                     const Glib::RefPtr<Gio::Cancellable> &cancellable) {
+    if (cancellable && cancellable->is_cancelled()) {
+        return cancelled_error();
+    }
+    if (const auto safe = validate_write_path(target, core::PathOp::WRITE); !safe) {
+        return safe.error();
+    }
+    if (const auto valid = core::validate_name(base_name(target)); !valid) {
+        return valid.error();
+    }
+    if (const auto valid = core::validate_absolute(source); !valid) {
+        return valid.error();
+    }
+    const auto parent = parent_path(target);
+    const core::UniqueFd directory(open(parent.c_str(), O_PATH | O_DIRECTORY | O_CLOEXEC));
+    if (!directory) {
+        return core::error_from_errno(errno, "open target parent", parent);
+    }
+    const Entry destination{target, directory.get()};
+    FileStatus original;
+    const auto check_expected = [&](const FileStamp &stamp) -> core::Result<void> {
+        if (const auto read = read_status(destination, original); !read) {
+            return read.error();
+        }
+        if (stamp_from_stat(original) != stamp) {
+            return core::make_error(core::ErrorCode::CONFLICT, "Target changed since it was read");
+        }
+        return {};
+    };
+    if (expected) {
+        if (const auto checked = check_expected(*expected); !checked) {
+            return checked.error();
+        }
+    } else if (const auto read = read_status(destination, original); read) {
+        return core::make_error(core::ErrorCode::EXISTS, "Target already exists");
+    } else if (read.error().code != core::ErrorCode::NOT_FOUND) {
+        return read.error();
+    }
+
+    const std::string source_path = source.substr(0, source.find_last_not_of('/') + 1U);
+    FileStatus source_status;
+    if (const auto read = read_status({source_path.empty() ? "/" : source_path}, source_status);
+        !read) {
+        return read.error();
+    }
+    if (!S_ISREG(source_status.mode) || source.back() == '/') {
+        return core::make_error(core::ErrorCode::NOT_SUPPORTED, "Source must be a regular file");
+    }
+    const core::UniqueFd input(
+        open(source.c_str(), O_RDONLY | O_NONBLOCK | O_NOFOLLOW | O_CLOEXEC));
+    if (!input) {
+        return core::error_from_errno(errno, "open source", source);
+    }
+    struct stat opened {};
+    if (fstat(input.get(), &opened) != 0) {
+        return core::error_from_errno(errno, "fstat source", source);
+    }
+    if (opened.st_dev != source_status.dev || opened.st_ino != source_status.ino) {
+        return core::make_error(core::ErrorCode::CONFLICT, "Source changed during open");
+    }
+
+    const Entry temporary = temporary_sibling(destination);
+    const bool default_mode = !mode && !expected;
+    const core::UniqueFd output(openat(temporary.parent, temporary.name().c_str(),
+                                       O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC,
+                                       default_mode ? 0666 : 0600));
+    if (!output) {
+        return core::error_from_errno(errno, "open temporary file", temporary.path);
+    }
+    TemporaryPath cleanup(temporary.name(), temporary.parent);
+    mode_t permissions = mode.value_or(original.mode) & 07777;
+    if (default_mode) {
+        // Let the kernel apply the umask without changing process state.
+        struct stat created {};
+        if (fstat(output.get(), &created) != 0 || fchmod(output.get(), 0600) != 0) {
+            return core::error_from_errno(errno, "prepare temporary file", temporary.path);
+        }
+        permissions = created.st_mode & 07777;
+    }
+
+    std::array<char, kCopyBufferBytes> buffer{};
+    while (true) {
+        if (cancellable && cancellable->is_cancelled()) {
+            return cancelled_error();
+        }
+        const ssize_t count = read(input.get(), buffer.data(), buffer.size());
+        if (count == 0) {
+            break;
+        }
+        if (count < 0) {
+            if (errno == EINTR) {
+                continue;
+            }
+            return core::error_from_errno(errno, "read source", source);
+        }
+        if (const auto written = write_bytes(output.get(), buffer.data(),
+                                             static_cast<std::size_t>(count), temporary.path);
+            !written) {
+            return written.error();
+        }
+    }
+    struct stat saved {};
+    if (fchmod(output.get(), permissions) != 0 || fsync(output.get()) != 0 ||
+        fstat(output.get(), &saved) != 0) {
+        return core::error_from_errno(errno, "finish temporary file", temporary.path);
+    }
+    if (expected) {
+        if (const auto checked = check_expected(*expected); !checked) {
+            return checked.error();
+        }
+    }
+    if (cancellable && cancellable->is_cancelled()) {
+        return cancelled_error();
+    }
+    if (const auto renamed = rename_entry(temporary, destination, expected.has_value()); !renamed) {
+        return renamed.error();
+    }
+    cleanup.dismiss();
+    return stamp_from_stat(file_status_from_stat(saved));
+}
+
+core::Result<void> remove_tree(const std::string &path, Confirmation confirmation,
+                               const Glib::RefPtr<Gio::Cancellable> &cancellable) {
+    if (confirmation != Confirmation::CONFIRMED) {
+        return core::make_error(core::ErrorCode::NOT_CONFIRMED,
+                                "Permanent deletion requires confirmation");
+    }
+    if (const auto safe = validate_write_path(path, core::PathOp::REMOVE); !safe) {
+        return safe.error();
+    }
+    const Removal removal{nullptr, nullptr, false, cancellable.operator->(), true};
+    if (removal.is_cancelled()) {
+        return cancelled_error();
+    }
+    // A trailing slash must not make a symbolic link resolve to its target.
+    const std::string entry = path.substr(0, path.find_last_not_of('/') + 1U);
+    if (const auto valid = core::validate_name(base_name(entry)); !valid) {
+        return valid.error();
+    }
+    const auto parent = parent_path(entry);
+    const core::UniqueFd directory(open(parent.c_str(), O_PATH | O_DIRECTORY | O_CLOEXEC));
+    if (!directory) {
+        return core::error_from_errno(errno, "open parent", parent);
+    }
+    return remove_entry({entry, directory.get()}, removal);
 }
 
 core::Result<job::JobId> copy(job::JobQueue &queue, const std::vector<std::string> &sources,
