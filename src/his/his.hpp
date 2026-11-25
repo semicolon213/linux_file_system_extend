@@ -10,6 +10,7 @@
 
 #include "core/error.hpp"
 #include "core/event.hpp"
+#include "fs/fs.hpp"
 
 namespace filescope::his {
 
@@ -59,6 +60,7 @@ enum class State : std::uint8_t { READY, DEGRADED, DISABLED };
 using HistorySlot = sigc::slot<void(core::Result<FileHistory>)>;
 using DeletedSlot = sigc::slot<void(core::Result<std::vector<FileHistory>>)>;
 using ContentSlot = sigc::slot<void(core::Result<std::string>)>;
+using RestoreSlot = sigc::slot<void(core::Result<fs::FileStamp>)>;
 
 class History {
     class Impl;
@@ -73,9 +75,13 @@ class History {
     void shutdown();
     State state() const;
     void record_events(const std::vector<core::EventPtr> &events);
+    void scan_root(const std::string &root, bool recursive);
+    void note_pause(bool paused);
     void load_history_async(const std::string &path, HistorySlot done);
     void list_deleted_async(const std::string &dir, DeletedSlot done);
     void read_content_async(VersionId id, ContentSlot done);
+    void restore_async(VersionId id, fs::Confirmation confirmation, RestoreSlot done);
+    void recover_async(VersionId id, RestoreSlot done);
 
     sigc::signal<void(const Version &)> &signal_version_added();
     sigc::signal<void(State, const std::optional<core::Error> &)> &signal_state();
@@ -84,5 +90,7 @@ class History {
     std::unique_ptr<Impl> impl_;
     friend struct TestAccess;
 };
+
+bool is_excluded(const std::string &path, const std::string &data_dir);
 
 } // namespace filescope::his

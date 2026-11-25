@@ -4,6 +4,7 @@
 
 #include <glib.h>
 #include <glibmm/init.h>
+#include <glibmm/miscutils.h>
 #include <sys/stat.h>
 
 #include "his/his_testing.hpp"
@@ -379,6 +380,70 @@ void test_deleted_and_gaps() {
     g_assert_true(load(*fixture.history, nested).deleted_at_us.has_value());
 }
 
+void test_excluded_paths() {
+    const std::string data = "/a/history";
+    const auto trash = Glib::get_user_data_dir() + "/Trash";
+    const std::vector<std::pair<std::string, std::string>> cases{
+        {data + "/db", data + "-other/db"},
+        {trash + "/files/document", trash + "can/files/document"},
+        {"/a/.ssh/config", "/a/.ssh-old/config"},
+        {"/a/.gnupg/config", "/a/.gnupg-old/config"},
+        {"/a/.password-store/file", "/a/.password-store-old/file"},
+        {"/a/.pki/file", "/a/.pki-old/file"},
+        {"/a/keyrings/file", "/a/keyrings-old/file"},
+        {"/a/.git/config", "/a/.gitignore"},
+        {"/a/.hg/config", "/a/.hgrc"},
+        {"/a/.svn/file", "/a/.svn-old/file"},
+        {"/a/node_modules/file", "/a/node_modules-old/file"},
+        {"/a/__pycache__/file", "/a/__pycache__-old/file"},
+        {"/a/.cache/file", "/a/.cache-old/file"},
+        {"/a/.venv/file", "/a/.venv-old/file"},
+        {"/a/.env", "/a/.envrc"},
+        {"/a/.env.local", "/a/.env-local"},
+        {"/a/.netrc", "/a/.netrc.txt"},
+        {"/a/.pgpass", "/a/.pgpass.txt"},
+        {"/a/id_rsa", "/a/my_id_rsa"},
+        {"/a/id_ed25519.pub", "/a/my_id_ed25519"},
+        {"/a/id_ecdsa.pub", "/a/my_id_ecdsa"},
+        {"/a/x.pem", "/a/x.pem.txt"},
+        {"/a/x.key", "/a/keys.txt"},
+        {"/a/x.p12", "/a/x.p12.txt"},
+        {"/a/x.pfx", "/a/x.pfx.txt"},
+        {"/a/x.kdbx", "/a/x.kdbx.txt"},
+        {"/a/.filescope-1", "/a/.filescope"},
+        {"/a/x.swp", "/a/x.swp.txt"},
+        {"/a/x.swx", "/a/x.swx.txt"},
+        {"/a/x~", "/a/x~.txt"},
+        {"/a/.#lock", "/a/#lock"},
+        {"/a/.goutputstream-x", "/a/.goutputstream"},
+        {"/a/4913", "/a/49130"},
+        {"/a/history/../history/file", "/a/history/../file"},
+        {"/a/x\xff.pem", "/a/x\xff.PEM"},
+    };
+    for (const auto &[excluded, included] : cases) {
+        g_assert_true(his::is_excluded(excluded, data));
+        g_assert_false(his::is_excluded(included, data));
+    }
+}
+
+void test_synthetic_create() {
+    Fixture fixture;
+    fixture.open();
+    const auto path = fixture.path("already-written");
+    write_file(path, "content");
+    auto create = event(core::EventKind::CREATE, path, 1, g_get_real_time());
+    fixture.history->record_events({core::make_event(create)});
+    flush(*fixture.history);
+    g_assert_true(load(*fixture.history, path).versions.empty());
+    create.synthetic = true;
+    create.seq = 2;
+    fixture.history->record_events({core::make_event(std::move(create))});
+    flush(*fixture.history);
+    const auto history = load(*fixture.history, path);
+    g_assert_cmpuint(history.versions.size(), ==, 1);
+    g_assert_true(history.versions.front().origin == his::Origin::AUTO);
+}
+
 } // namespace
 
 int main(int argc, char **argv) {
@@ -391,5 +456,7 @@ int main(int argc, char **argv) {
     g_test_add_func("/his/capture/dedup-and-content", test_capture_and_content);
     g_test_add_func("/his/capture/limits", test_version_limits);
     g_test_add_func("/his/query/deleted-and-gaps", test_deleted_and_gaps);
+    g_test_add_func("/his/excluded/rules", test_excluded_paths);
+    g_test_add_func("/his/events/synthetic-create", test_synthetic_create);
     return g_test_run();
 }
