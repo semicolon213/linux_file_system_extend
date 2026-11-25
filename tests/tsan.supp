@@ -1,2 +1,2 @@
-# The uninstrumented GLib pool and main context hand off queue nodes and wakeups.
-called_from_lib:libglib-2.0.so.0
+# GLib destroys the queue nodes it uses to hand work to the pool-spawner.
+race:^g_queue_pop_tail$

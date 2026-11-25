@@ -2,6 +2,7 @@
 
 #include "test_support.hpp"
 
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <string>
@@ -59,8 +60,13 @@ void test_copy_tree_and_special_file() {
     const std::string regular = join(source, "file.txt");
     write_file(regular, "contents");
     g_assert_cmpint(chmod(regular.c_str(), 0640), ==, 0);
-    const std::string link = join(source, "link");
-    g_assert_cmpint(symlink("file.txt", link.c_str()), ==, 0);
+    const std::string outside = join(environment.root(), "outside");
+    make_directory(outside);
+    write_file(join(outside, "sentinel"), "outside");
+    const std::string child = join(source, "child");
+    make_directory(child);
+    const std::string link = join(child, "link");
+    g_assert_cmpint(symlink(outside.c_str(), link.c_str()), ==, 0);
     const std::string fifo = join(source, "pipe");
     g_assert_cmpint(mkfifo(fifo.c_str(), 0600), ==, 0);
 
@@ -77,7 +83,7 @@ void test_copy_tree_and_special_file() {
     g_assert_cmpint(stat(join(copied, "file.txt").c_str(), &regular_status), ==, 0);
     g_assert_cmpint(regular_status.st_mode & 0777, ==, 0640);
     struct stat link_status {};
-    g_assert_cmpint(lstat(join(copied, "link").c_str(), &link_status), ==, 0);
+    g_assert_cmpint(lstat(join(copied, "child/link").c_str(), &link_status), ==, 0);
     g_assert_true(S_ISLNK(link_status.st_mode));
     g_assert_false(g_file_test(join(copied, "pipe").c_str(), G_FILE_TEST_EXISTS));
 
@@ -88,6 +94,13 @@ void test_copy_tree_and_special_file() {
                                                   result.error->code == ErrorCode::NOT_SUPPORTED);
     }
     g_assert_true(found_unsupported);
+
+    const auto removed =
+        filescope::fs::delete_permanently(queue, {source}, Confirmation::CONFIRMED);
+    g_assert_true(removed.ok());
+    g_assert_true(wait_for_terminal(queue, removed.value()) == JobState::DONE);
+    g_assert_false(std::filesystem::exists(source));
+    g_assert_true(read_file(join(outside, "sentinel")) == "outside");
 }
 
 void test_conflict_policies() {
@@ -189,6 +202,128 @@ void test_move_and_delete() {
     g_assert_false(g_file_test(three.c_str(), G_FILE_TEST_EXISTS));
 }
 
+void test_move_overwrite() {
+    filescope::test::TestEnvironment environment;
+    const std::string source_dir = join(environment.root(), "source");
+    const std::string destination = join(environment.root(), "destination");
+    make_directory(source_dir);
+    make_directory(destination);
+    const std::string source = join(source_dir, "tree");
+    const std::string target = join(destination, "tree");
+    make_directory(source);
+    make_directory(target);
+    write_file(join(source, "new"), "new");
+    write_file(join(target, "old"), "old");
+    JobQueue queue;
+    const auto move = [&] {
+        const auto submitted = filescope::fs::move(
+            queue, {source}, destination, ConflictPolicy::OVERWRITE, Confirmation::CONFIRMED);
+        g_assert_true(submitted.ok());
+        return wait_for_terminal(queue, submitted.value());
+    };
+
+    if (geteuid() != 0) {
+        g_assert_cmpint(chmod(source_dir.c_str(), 0500), ==, 0);
+        g_assert_true(move() == JobState::FAILED);
+        g_assert_true(read_file(join(target, "old")) == "old");
+        g_assert_true(read_file(join(source, "new")) == "new");
+        g_assert_cmpint(chmod(source_dir.c_str(), 0700), ==, 0);
+    }
+
+    g_assert_true(move() == JobState::DONE);
+    g_assert_true(read_file(join(target, "new")) == "new");
+    g_assert_false(std::filesystem::exists(join(target, "old")));
+    g_assert_false(std::filesystem::exists(source));
+    g_assert_true(std::distance(std::filesystem::directory_iterator(destination),
+                                std::filesystem::directory_iterator()) == 1);
+
+    std::filesystem::remove_all(target);
+    write_file(source, "new file");
+    write_file(target, "old file");
+    struct stat before {};
+    struct stat after {};
+    g_assert_cmpint(stat(source.c_str(), &before), ==, 0);
+    g_assert_true(move() == JobState::DONE);
+    g_assert_cmpint(stat(target.c_str(), &after), ==, 0);
+    g_assert_true(before.st_ino == after.st_ino);
+    g_assert_true(read_file(target) == "new file");
+}
+
+void test_move_cross_device() {
+    filescope::test::TestEnvironment environment;
+    struct stat source_status {};
+    g_assert_cmpint(stat(environment.root().c_str(), &source_status), ==, 0);
+    std::string destination;
+    const std::string runtime = "/run/user/" + std::to_string(getuid());
+    for (const char *parent : {runtime.c_str(), "/mnt/wsl", "/mnt/c", "/media", "/run/media"}) {
+        struct stat status {};
+        if (stat(parent, &status) == 0 && status.st_dev != source_status.st_dev) {
+            std::string candidate = join(parent, "filescope-exdev-XXXXXX");
+            if (mkdtemp(candidate.data()) != nullptr) {
+                destination = std::move(candidate);
+                break;
+            }
+        }
+    }
+    if (destination.empty()) {
+        g_test_skip("No writable alternate device among candidate mount points");
+        return;
+    }
+
+    const std::string source = join(environment.root(), "tree");
+    const std::string nested = join(source, "nested");
+    const std::string target = join(destination, "tree");
+    const std::string fifo = join(nested, "pipe");
+    make_directory(source);
+    make_directory(nested);
+    write_file(join(nested, "file"), "preserved");
+    g_assert_cmpint(mkfifo(fifo.c_str(), 0600), ==, 0);
+    JobQueue queue;
+    const auto move = [&](ConflictPolicy policy, Confirmation confirmation) {
+        const auto submitted =
+            filescope::fs::move(queue, {source}, destination, policy, confirmation);
+        g_assert_true(submitted.ok());
+        return submitted.value();
+    };
+    const JobId failed = move(ConflictPolicy::FAIL, Confirmation::NONE);
+    g_assert_true(wait_for_terminal(queue, failed) == JobState::FAILED);
+    bool fifo_failed = false;
+    bool tree_partial = false;
+    for (const auto &item : queue.results(failed)) {
+        fifo_failed |=
+            item.path == fifo && item.error && item.error->code == ErrorCode::NOT_SUPPORTED;
+        tree_partial |= item.path == source && item.error && item.error->code == ErrorCode::PARTIAL;
+    }
+    g_assert_true(fifo_failed);
+    if (g_test_verbose()) {
+        for (const auto &item : queue.results(failed)) {
+            if (item.error) {
+                g_test_message("%s: %s", item.path.c_str(), item.error->message.c_str());
+            }
+        }
+    }
+    g_assert_true(tree_partial);
+    g_assert_true(std::filesystem::is_fifo(fifo));
+    g_assert_true(read_file(join(nested, "file")) == "preserved");
+    g_assert_true(read_file(join(target, "nested/file")) == "preserved");
+
+    write_file(join(target, "old"), "old target");
+    const JobId rollback = move(ConflictPolicy::OVERWRITE, Confirmation::CONFIRMED);
+    g_assert_true(wait_for_terminal(queue, rollback) == JobState::FAILED);
+    g_assert_true(std::filesystem::is_fifo(fifo));
+    g_assert_true(read_file(join(target, "old")) == "old target");
+    g_assert_true(std::distance(std::filesystem::directory_iterator(destination),
+                                std::filesystem::directory_iterator()) == 1);
+
+    g_assert_cmpint(unlink(fifo.c_str()), ==, 0);
+    const JobId moved = move(ConflictPolicy::OVERWRITE, Confirmation::CONFIRMED);
+    g_assert_true(wait_for_terminal(queue, moved) == JobState::DONE);
+    g_assert_false(std::filesystem::exists(source));
+    g_assert_false(std::filesystem::exists(join(target, "old")));
+    g_assert_true(read_file(join(target, "nested/file")) == "preserved");
+    std::filesystem::remove_all(destination);
+}
+
 void test_delete_partial_permission_failure() {
     if (geteuid() == 0) {
         g_test_skip("permission denial is not reproducible as root");
@@ -273,6 +408,8 @@ int main(int argc, char **argv) {
     g_test_add_func("/fs/integration/copy-tree", test_copy_tree_and_special_file);
     g_test_add_func("/fs/integration/conflicts", test_conflict_policies);
     g_test_add_func("/fs/integration/move-delete", test_move_and_delete);
+    g_test_add_func("/fs/integration/move-overwrite", test_move_overwrite);
+    g_test_add_func("/fs/integration/move-cross-device", test_move_cross_device);
     g_test_add_func("/fs/integration/delete-partial", test_delete_partial_permission_failure);
     g_test_add_func("/fs/integration/cancel", test_copy_cancellation_cleanup);
     g_test_add_func("/fs/integration/trash", test_trash);

@@ -1,11 +1,13 @@
 #include "nav/nav.hpp"
 
 #include <algorithm>
+#include <atomic>
 #include <cerrno>
 #include <cstdint>
 #include <cstring>
 #include <dirent.h>
 #include <fcntl.h>
+#include <functional>
 #include <memory>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -20,31 +22,67 @@
 #include "core/fd.hpp"
 #include "core/path.hpp"
 
-#if defined(__SANITIZE_THREAD__)
-#include <sanitizer/tsan_interface.h>
-#endif
-
 namespace filescope::nav {
 namespace {
 
 using EntriesResult = core::Result<std::vector<core::Entry>>;
 using MatchesResult = core::Result<std::vector<std::string>>;
 
-// GTask synchronizes submission and completion inside uninstrumented GLib/GIO.
-void task_acquire(void *request) {
-#if defined(__SANITIZE_THREAD__)
-    __tsan_acquire(request);
-#else
-    (void)request;
-#endif
+struct NavTask {
+    GSource *source = nullptr;
+    std::function<void()> work;
+    std::atomic<bool> queued{false};
+};
+
+void run_task(void *data, void *) {
+    const std::unique_ptr<NavTask> task(static_cast<NavTask *>(data));
+    g_assert_true(task->queued.load(std::memory_order_acquire));
+    task->work();
+    g_source_set_ready_time(task->source, 0);
+    g_source_unref(task->source);
 }
 
-void task_release(void *request) {
-#if defined(__SANITIZE_THREAD__)
-    __tsan_release(request);
-#else
-    (void)request;
-#endif
+gboolean deliver_task(void *data) {
+    (*static_cast<std::function<void()> *>(data))();
+    return G_SOURCE_REMOVE;
+}
+
+gboolean dispatch_task(GSource *, GSourceFunc callback, void *data) { return callback(data); }
+
+GThreadPool *nav_pool() {
+    static const std::unique_ptr<GThreadPool, void (*)(GThreadPool *)> pool(
+        g_thread_pool_new(run_task, nullptr, 10, false, nullptr),
+        [](GThreadPool *value) { g_thread_pool_free(value, false, false); });
+    return pool.get();
+}
+
+template <typename Work, typename Slot> void submit_task(Work work, Slot done) {
+    struct ResultSlot {
+        std::optional<decltype(work())> value;
+        std::atomic<bool> ready{false};
+    };
+    auto result = std::make_shared<ResultSlot>();
+    auto task = std::make_unique<NavTask>();
+    task->work = [result, work = std::move(work)] {
+        result->value.emplace(work());
+        result->ready.store(true, std::memory_order_release);
+    };
+    auto deliver = std::make_unique<std::function<void()>>([result, done = std::move(done)] {
+        g_assert_true(result->ready.load(std::memory_order_acquire));
+        done(std::move(result->value.value()));
+    });
+
+    // Create and attach the completion source on the caller's context before the worker runs.
+    static GSourceFuncs source_functions = {nullptr, nullptr, dispatch_task,
+                                            nullptr, nullptr, nullptr};
+    task->source = g_source_new(&source_functions, sizeof(GSource));
+    g_source_set_callback(task->source, deliver_task, deliver.release(), [](void *data) {
+        const std::unique_ptr<std::function<void()>> owned(
+            static_cast<std::function<void()> *>(data));
+    });
+    g_source_attach(task->source, g_main_context_get_thread_default());
+    task->queued.store(true, std::memory_order_release);
+    g_thread_pool_push(nav_pool(), task.release(), nullptr);
 }
 
 struct DirectoryCloser {
@@ -191,59 +229,16 @@ EntriesResult list_dir(const std::string &path, bool show_hidden, bool dirs_only
     });
 }
 
-template <typename Result> void destroy_result(void *value) {
-    std::unique_ptr<Result> result(static_cast<Result *>(value));
-}
-
-struct ListTask {
-    std::string path;
-    bool show_hidden = false;
-    bool dirs_only = false;
-    ListDirSlot done;
-};
-
-void destroy_list_task(void *value) {
-    std::unique_ptr<ListTask> task(static_cast<ListTask *>(value));
-}
-
-void list_worker(GTask *task, gpointer, gpointer task_data, GCancellable *cancellable) {
-    task_acquire(task_data);
-    const auto &request = *static_cast<ListTask *>(task_data);
-    auto result = std::make_unique<EntriesResult>(
-        list_dir(request.path, request.show_hidden, request.dirs_only, cancellable));
-    task_release(task_data);
-    g_task_return_pointer(task, result.release(), destroy_result<EntriesResult>);
-}
-
-void list_ready(GObject *, GAsyncResult *result, gpointer user_data) {
-    task_acquire(user_data);
-    auto done = std::move(static_cast<ListTask *>(user_data)->done);
-    g_task_set_task_data(G_TASK(result), nullptr, nullptr);
-    std::unique_ptr<EntriesResult> value(
-        static_cast<EntriesResult *>(g_task_propagate_pointer(G_TASK(result), nullptr)));
-    done(*value);
-}
-
-struct CompleteTask {
-    std::string input;
-    bool show_hidden = false;
-    std::size_t max_results = 0;
-    CompleteSlot done;
-};
-
-void destroy_complete_task(void *value) {
-    std::unique_ptr<CompleteTask> task(static_cast<CompleteTask *>(value));
-}
-
-MatchesResult complete(const CompleteTask &request, GCancellable *cancellable) {
-    if (const auto valid = core::validate_absolute(request.input); !valid) {
+MatchesResult complete(const std::string &input, bool show_hidden, std::size_t max_results,
+                       GCancellable *cancellable) {
+    if (const auto valid = core::validate_absolute(input); !valid) {
         return valid.error();
     }
-    const std::size_t separator = request.input.find_last_of('/');
-    const std::string directory = separator == 0 ? "/" : request.input.substr(0, separator);
-    const std::string prefix = request.input.substr(separator + 1);
+    const std::size_t separator = input.find_last_of('/');
+    const std::string directory = separator == 0 ? "/" : input.substr(0, separator);
+    const std::string prefix = input.substr(separator + 1);
     auto matches = scan_dir<std::string>(
-        directory, request.show_hidden, true, cancellable,
+        directory, show_hidden, true, cancellable,
         [&directory, &prefix](const core::Entry &entry) -> std::optional<std::string> {
             if (entry.name.compare(0, prefix.size(), prefix) != 0) {
                 return std::nullopt;
@@ -253,28 +248,11 @@ MatchesResult complete(const CompleteTask &request, GCancellable *cancellable) {
     if (matches) {
         auto &values = matches.value();
         std::sort(values.begin(), values.end());
-        if (values.size() > request.max_results) {
-            values.resize(request.max_results);
+        if (values.size() > max_results) {
+            values.resize(max_results);
         }
     }
     return matches;
-}
-
-void complete_worker(GTask *task, gpointer, gpointer task_data, GCancellable *cancellable) {
-    task_acquire(task_data);
-    const auto &request = *static_cast<CompleteTask *>(task_data);
-    auto result = std::make_unique<MatchesResult>(complete(request, cancellable));
-    task_release(task_data);
-    g_task_return_pointer(task, result.release(), destroy_result<MatchesResult>);
-}
-
-void complete_ready(GObject *, GAsyncResult *result, gpointer user_data) {
-    task_acquire(user_data);
-    auto done = std::move(static_cast<CompleteTask *>(user_data)->done);
-    g_task_set_task_data(G_TASK(result), nullptr, nullptr);
-    std::unique_ptr<MatchesResult> value(
-        static_cast<MatchesResult *>(g_task_propagate_pointer(G_TASK(result), nullptr)));
-    done(*value);
 }
 
 std::string bookmarks_path() {
@@ -285,18 +263,12 @@ std::string bookmarks_path() {
 
 void list_dir_async(const std::string &path, bool show_hidden, bool dirs_only,
                     const Glib::RefPtr<Gio::Cancellable> &cancellable, ListDirSlot done) {
-    auto request = std::make_unique<ListTask>();
-    request->path = path;
-    request->show_hidden = show_hidden;
-    request->dirs_only = dirs_only;
-    request->done = std::move(done);
-    GTask *task =
-        g_task_new(nullptr, cancellable ? cancellable->gobj() : nullptr, list_ready, request.get());
-    g_task_set_check_cancellable(task, false);
-    task_release(request.get());
-    g_task_set_task_data(task, request.release(), destroy_list_task);
-    g_task_run_in_thread(task, list_worker);
-    g_object_unref(task);
+    submit_task(
+        [path, show_hidden, dirs_only, cancellable] {
+            return list_dir(path, show_hidden, dirs_only,
+                            cancellable ? cancellable->gobj() : nullptr);
+        },
+        std::move(done));
 }
 
 History::History(std::string initial_path) { paths_.push_back(std::move(initial_path)); }
@@ -362,18 +334,12 @@ std::vector<std::string> breadcrumb(const std::string &path) {
 
 void complete_async(const std::string &input, bool show_hidden, std::size_t max_results,
                     const Glib::RefPtr<Gio::Cancellable> &cancellable, CompleteSlot done) {
-    auto request = std::make_unique<CompleteTask>();
-    request->input = input;
-    request->show_hidden = show_hidden;
-    request->max_results = max_results;
-    request->done = std::move(done);
-    GTask *task = g_task_new(nullptr, cancellable ? cancellable->gobj() : nullptr, complete_ready,
-                             request.get());
-    g_task_set_check_cancellable(task, false);
-    task_release(request.get());
-    g_task_set_task_data(task, request.release(), destroy_complete_task);
-    g_task_run_in_thread(task, complete_worker);
-    g_object_unref(task);
+    submit_task(
+        [input, show_hidden, max_results, cancellable] {
+            return complete(input, show_hidden, max_results,
+                            cancellable ? cancellable->gobj() : nullptr);
+        },
+        std::move(done));
 }
 
 std::string home() { return Glib::get_home_dir(); }
