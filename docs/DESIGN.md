@@ -290,7 +290,7 @@ enum class Confirmation { NONE, CONFIRMED };
 enum class ConflictPolicy {
     FAIL,      // 기본: 항목을 EXISTS로 실패 처리하고 다음 항목 진행
     SKIP,      // 건너뜀(skipped=true)
-    KEEP_BOTH, // "이름 (2).확장자" 형식의 비어 있는 이름 선택
+    KEEP_BOTH, // "이름 (1).확장자"부터 번호를 올려 비어 있는 이름 선택(2026-11-26 사용자 결정)
     OVERWRITE, // CONFIRMED 필요. 디렉터리→파일, 파일→디렉터리 덮어쓰기는 금지
 };
 
