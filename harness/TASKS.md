@@ -42,6 +42,8 @@
 | R2-T11 ui 검색·휴지통·미리보기 | VERIFY (c08cce1 병합, R2 묶음 QA 대기) | R2-T07, R2-T08, R2-T10, U-10 시안 확정 |
 | R2-F01 his 종료 테스트 간헐 실패, GCC 고정 | VERIFY (f6b1cd2 병합, R2 묶음 QA 대기) | R2-T05 |
 | R2-F02 트레이 생성 API 교체 (QA N1) | VERIFY (a12201c 병합, N1 해소 확인) | R2 QA |
+| R2-F03 새 Ubuntu LTS 빌드 호환 (트레이 deprecated) | READY | 사용자 수동 점검 |
+| R2-F04 로그·집계 범위와 파일 메뉴 (사용자 결정) | READY | 사용자 수동 점검 |
 
 의존 순서: R0-002 → R1-T01 → {R1-T02, R1-T04, R1-T05, R1-T07 병렬} → R1-T03(T02 필요) → R1-T06. 독립 QA는 R1 전체를 묶어 한 번 한다(R0-002 포함, PROGRESS 미결 사항 E-6).
 
@@ -586,4 +588,32 @@ R2 의존 순서: {R2-T00, R2-T01 병렬} → {R2-T02(T00 뒤), R2-T03, R2-T04, 
 - 변경 금지: 다른 모듈, 루트 빌드 파일, scripts, 억제 파일, docs, harness
 - 수용 조건: 호스트 있는 `bash tests/ui/run.sh ./build/debug/filescope tray` 통과(IconThemePath 기대값이 바뀌면 테스트를 맞춘다). 아이콘이 실제로 사용자 폴더의 svg로 보이는지 테스트 fixture로 확인. 메모리 검사 실행 확인은 Coordinator가 따로 한다.
 - 필수 테스트 / 게이트: make verify, make ui-interaction, make tsan 10회(종료 코드)
+- 공통: WSL Ubuntu-24.04에서 빌드·테스트, Codex 문서 수정 금지, 커밋에 Co-Authored-By 금지.
+
+## R2-F03 새 Ubuntu LTS 빌드 호환 (트레이 deprecated)
+
+- Task ID / 요구사항 ID: R2-F03 / NFR-018
+- 상태: READY
+- 배경: 사용자 VM(GCC 15.2, libayatana-appindicator3 0.5.94, glib 2.88)에서 `make build`가 `src/ui/tray.cpp:166` `app_indicator_new` deprecated 경고(-Werror)로 실패한다. 0.5.94는 라이브러리 전체를 deprecated로 표시한다(실행 시 경고도 나옴).
+- 목표: 24.04(0.5.93)와 새 버전(0.5.94 이상) 모두 경고 없이 빌드된다. 트레이 동작은 그대로다. `-Werror`는 유지하고, 억제가 필요하면 `src/ui/tray.cpp`의 appindicator 호출 구간에만 `G_GNUC_BEGIN_IGNORE_DEPRECATIONS`/`G_GNUC_END_IGNORE_DEPRECATIONS`로 국소 적용한다. 대체 라이브러리(libayatana-appindicator-glib) 전환은 하지 않는다(24.04에 없음).
+- 허용 파일: `src/ui/tray.cpp`
+- 변경 금지: 다른 파일 전부
+- 수용 조건: 24.04에서 게이트 통과. 다른 appindicator 호출(set_icon_full, set_status, set_menu 등)도 같은 구간에 들어가 있는지 확인. 새 버전 빌드는 사용자 VM에서 Coordinator가 확인한다.
+- 필수 테스트 / 게이트: make verify, make ui-interaction, make tsan 10회(종료 코드)
+- 공통: WSL Ubuntu-24.04에서 빌드·테스트, Codex 문서 수정 금지, 커밋에 Co-Authored-By 금지.
+
+## R2-F04 로그·집계 범위와 파일 메뉴 (사용자 결정)
+
+- Task ID / 요구사항 ID: R2-F04 / UI-015, DASH-001, 루트 DESIGN.md "Event Log"·"Menu & Toast"(2026-11-26 추가 문단)
+- 상태: READY
+- 배경: 사용자 VM 수동 점검에서 (1) 홈을 감시하면 이력 저장 폴더(`~/.local/share/filescope/blobs`, `tmp/capture-*`)의 변경이 이벤트 로그와 집계에 계속 쌓였고, (2) 새 파일·새 폴더를 찾을 메뉴가 없었다(빈 폴더 화면 버튼과 단축키뿐).
+- 목표:
+  1. 이력 저장 폴더(ui의 history_dir_) 아래 경로의 이벤트는 이벤트 로그, 세션 집계, 1분봉, 헤더 지표, 변경 내용 패널 폴더 행 어디에도 반영하지 않는다(`his::is_excluded`가 맞으면 재사용).
+  2. 이벤트 로그와 세션 집계는 현재 탭 폴더와 그 하위만 보인다. 탭 전환·폴더 이동 시 다시 계산한다. 이를 위해 ui가 세션 이벤트(경로, 이전 경로, 종류, 시각)를 메모리에 보관한다. 상한 200,000건, 넘으면 오래된 것부터 버리고 집계 칸 아래에 "오래된 기록 일부 제외"를 흐린 글자로 표시한다. 이동은 원래·새 경로 중 하나가 범위 안이면 포함. 1분봉·헤더 지표는 감시 전체 기준 유지(dash 변경 없음). 범위 판정은 경로 구성 요소 단위(`/a/b`는 `/a/bc`를 포함하지 않음).
+  3. 파일 목록 우클릭 메뉴: 행 위는 기존 항목 + 단축키 표시 + 구분선 + 새 파일·새 폴더. 빈 곳 우클릭은 선택을 바꾸지 않고 새 파일·새 폴더·붙여넣기(클립보드 없으면 비활성), 감시하지 않는 폴더면 "이 폴더 감시 시작". Shift+F10·메뉴 키 동일.
+  4. 헤더바 주소창 오른쪽 "새로 만들기" 아이콘 버튼(`list-add-symbolic`, 접근성 이름 "새로 만들기") → 새 파일 / 새 폴더 메뉴. 동작은 기존 `create_entry`.
+- 허용 파일: `src/ui/**`(tray.cpp 제외), `tests/ui/**`
+- 변경 금지: 다른 모듈, 루트 빌드 파일, scripts, 억제 파일, docs, harness
+- 수용 조건: ui-interaction에 새 묶음 추가 — (a) data_dir 아래 파일 변경이 로그·집계에 0건, (b) 폴더 A, A/sub, B에서 이벤트를 낸 뒤 A로 가면 A·A/sub 이벤트만, B로 가면 B만 보이고 집계 숫자가 일치, `/a/bc` 경계 사례, (c) 빈 곳 우클릭 메뉴 항목과 비활성 상태, 메뉴로 새 폴더 생성, (d) 새로 만들기 버튼으로 새 파일 생성. 기존 R1·R2 묶음 통과.
+- 필수 테스트 / 게이트: make verify, make ui-interaction, make stress, make tsan 10회(종료 코드)
 - 공통: WSL Ubuntu-24.04에서 빌드·테스트, Codex 문서 수정 금지, 커밋에 Co-Authored-By 금지.
