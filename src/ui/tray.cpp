@@ -157,6 +157,8 @@ std::vector<TrayItem> tray_items(TrayState state, const std::vector<mon::WatchIn
 
 class Tray::Impl {
   public:
+    // Newer Ayatana releases deprecate the GTK3 API used on Ubuntu 24.04.
+    G_GNUC_BEGIN_IGNORE_DEPRECATIONS
     Impl(Activate activate, sigc::slot<void()> disconnected)
         : activate_(std::move(activate)), disconnected_(std::move(disconnected)),
           icon_dir_(Glib::build_filename(
@@ -185,6 +187,7 @@ class Tray::Impl {
         g_signal_handler_disconnect(indicator_.get(), connection_signal_);
         app_indicator_set_status(indicator_.get(), APP_INDICATOR_STATUS_PASSIVE);
     }
+    G_GNUC_END_IGNORE_DEPRECATIONS
 
     bool connected() const {
         gboolean connected = FALSE;
@@ -202,7 +205,9 @@ class Tray::Impl {
             const auto description =
                 std::string("FileScope: ") +
                 (state == TrayState::RESYNCED ? "대기열 넘침 · 다시 검사함" : state_text(state));
+            G_GNUC_BEGIN_IGNORE_DEPRECATIONS
             app_indicator_set_icon_full(indicator_.get(), icon_path.c_str(), description.c_str());
+            G_GNUC_END_IGNORE_DEPRECATIONS
         }
         auto children = menu_.get_children();
         const bool same_actions =
@@ -236,7 +241,9 @@ class Tray::Impl {
             }
         }
         items_ = std::move(items);
+        G_GNUC_BEGIN_IGNORE_DEPRECATIONS
         app_indicator_set_status(indicator_.get(), APP_INDICATOR_STATUS_ACTIVE);
+        G_GNUC_END_IGNORE_DEPRECATIONS
     }
 
   private:
