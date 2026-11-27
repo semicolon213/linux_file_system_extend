@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <tuple>
 #include <utility>
 
 #include <gdk/gdkkeysyms.h>
@@ -52,6 +53,8 @@ const char *state_text(TrayState state) {
         return "감시 중";
     case TrayState::PAUSED:
         return "일시 정지됨";
+    case TrayState::IDLE:
+        return "감시 경로 없음";
     case TrayState::RESYNCING:
         return "대기열 넘침 · 다시 검사 중";
     case TrayState::ERROR:
@@ -118,7 +121,9 @@ std::vector<TrayItem> tray_items(TrayState state, const std::vector<mon::WatchIn
     const TrayItem separator{TrayAction::SEPARATOR, {}, {}};
     std::string status =
         state == TrayState::RESYNCED ? "대기열 넘침 · 다시 검사함" : state_text(state);
-    if (state == TrayState::ACTIVE || state == TrayState::PAUSED) {
+    if (state == TrayState::IDLE) {
+        status = "FileScope: " + status;
+    } else if (state == TrayState::ACTIVE || state == TrayState::PAUSED) {
         status += " · 경로 " + std::to_string(roots.size()) + "개";
     }
     std::vector<TrayItem> items{{info, std::move(status), {}}};
@@ -198,9 +203,10 @@ class Tray::Impl {
     void update(TrayState state, std::vector<TrayItem> items) {
         if (state_ != state) {
             state_ = state;
-            const char *name = state == TrayState::PAUSED ? "filescope-paused-symbolic.svg"
-                               : warning_icon(state)      ? "filescope-warning-symbolic.svg"
-                                                          : "filescope-active-symbolic.svg";
+            const bool idle_or_paused = state == TrayState::IDLE || state == TrayState::PAUSED;
+            const char *name = idle_or_paused        ? "filescope-paused-symbolic.svg"
+                               : warning_icon(state) ? "filescope-warning-symbolic.svg"
+                                                     : "filescope-active-symbolic.svg";
             const auto icon_path = Glib::build_filename(icon_dir_, name);
             const auto description =
                 std::string("FileScope: ") +
@@ -267,8 +273,8 @@ void Tray::update(TrayState state, std::vector<TrayItem> items) {
 
 class SummaryWindow::Impl {
   public:
-    Impl(SummaryWindow &window, Tray::Activate activate)
-        : window_(window), activate_(std::move(activate)) {
+    Impl(SummaryWindow &window, Tray::Activate activate, sigc::slot<void(core::WatchId)> stop_watch)
+        : window_(window), activate_(std::move(activate)), stop_watch_(std::move(stop_watch)) {
         window_.set_title("FileScope 요약");
         window_.set_default_size(360, -1);
         window_.set_resizable(false);
@@ -381,10 +387,10 @@ class SummaryWindow::Impl {
                                  "경로를 다시 검사해 놓친 변경을 맞춥니다."
                                : notice);
         band_->set_visible(paused || !notice.empty());
-        std::vector<std::pair<std::string, bool>> paths;
+        std::vector<Root> paths;
         paths.reserve(roots.size());
         for (const auto &root : roots) {
-            paths.emplace_back(root.path, root.mode == mon::WatchMode::RECURSIVE);
+            paths.emplace_back(root.id, root.path, root.mode == mon::WatchMode::RECURSIVE);
         }
         if (paths != paths_) {
             paths_ = std::move(paths);
@@ -422,6 +428,8 @@ class SummaryWindow::Impl {
     void redraw_changes() { recent_->queue_draw(); }
 
   private:
+    using Root = std::tuple<core::WatchId, std::string, bool>;
+
     struct Row {
         Gtk::ListBoxRow *widget = nullptr;
         Gtk::Button *button = nullptr;
@@ -453,7 +461,7 @@ class SummaryWindow::Impl {
         }
         const auto count = expanded_ ? paths_.size() : std::min(paths_.size(), kCollapsedRoots);
         for (std::size_t i = 0; i < count; ++i) {
-            const auto &[path, recursive] = paths_[i];
+            const auto &[id, path, recursive] = paths_[i];
             auto *box = section(*roots_, Gtk::ORIENTATION_HORIZONTAL, "fs-summary-path");
             auto *icon = Gtk::make_managed<Gtk::Image>("folder-symbolic", Gtk::ICON_SIZE_MENU);
             box->pack_start(*icon, false, false);
@@ -462,6 +470,10 @@ class SummaryWindow::Impl {
             title.set_max_width_chars(1);
             title.set_tooltip_text(title.get_text());
             pack_label(*box, recursive ? "하위 폴더 포함" : "이 폴더만", "fs-dim");
+            auto *stop = Gtk::make_managed<Gtk::Button>("×");
+            accessible(*stop, "감시 중지: " + display_path(path));
+            stop->signal_clicked().connect(sigc::bind(stop_watch_, id));
+            box->pack_end(*stop, false, false);
         }
         roots_->show_all();
         const auto extra = paths_.size() - count;
@@ -549,11 +561,12 @@ class SummaryWindow::Impl {
 
     SummaryWindow &window_;
     Tray::Activate activate_;
+    sigc::slot<void(core::WatchId)> stop_watch_;
     Gtk::Label *state_ = nullptr;
     Gtk::Label *rate_ = nullptr;
     Gtk::Box *roots_ = nullptr;
     Gtk::Button *root_toggle_ = nullptr;
-    std::vector<std::pair<std::string, bool>> paths_;
+    std::vector<Root> paths_;
     bool expanded_ = false;
     Gtk::Grid *tally_ = nullptr;
     std::array<Gtk::Label *, 4> figures_{};
@@ -565,8 +578,8 @@ class SummaryWindow::Impl {
     Gtk::Button *pause_ = nullptr;
 };
 
-SummaryWindow::SummaryWindow(Tray::Activate activate)
-    : impl_(std::make_unique<Impl>(*this, std::move(activate))) {}
+SummaryWindow::SummaryWindow(Tray::Activate activate, sigc::slot<void(core::WatchId)> stop_watch)
+    : impl_(std::make_unique<Impl>(*this, std::move(activate), std::move(stop_watch))) {}
 SummaryWindow::~SummaryWindow() { hide(); }
 
 void SummaryWindow::open() {

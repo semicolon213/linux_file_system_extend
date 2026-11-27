@@ -8,6 +8,7 @@ import time
 import gi
 
 from history_interaction import capture, diff_text
+from r2_interaction import navigate
 from interaction import (X11, click, close, descendants, display, find, force_overflow,
                          key, named, row, run, showing, wait)
 
@@ -245,6 +246,52 @@ def exercise(app, host, fixture, watched, icon_dir):
     assert sum(showing(child) and child.get_name().startswith("메인 창에서 ")
                for child in descendants(summary)) == 5
     capture("tray-overflow")
+
+    click(find(summary, "요약 닫기"))
+    focus_window(find(main, "경로 표시줄 편집"))
+    key("Escape")
+    extra = fixture / "summary-watch"
+    extra.mkdir()
+    navigate(app, extra)
+    click(find(main, "감시 시작", Atspi.Role.PUSH_BUTTON))
+    find(main, "감시 중지", Atspi.Role.PUSH_BUTTON)
+    tracked = extra / "tracked.txt"
+    tracked.touch()
+    wait("extra root sends events", lambda: row(log, str(tracked), 2))
+    wait("extra root persists history", lambda: recorded(tracked) > 0)
+    summary = open_summary()
+    stop = find(summary, f"감시 중지: {extra}", Atspi.Role.PUSH_BUTTON)
+    click(stop)
+    wait("summary root row disappears", lambda: not named(summary, f"감시 중지: {extra}"),
+         timeout=1)
+    find(main, "감시를 중지했습니다")
+    wait("header shows one remaining root", lambda: next((node for node in descendants(main)
+         if showing(node) and node.get_name().startswith("감시 경로 1   ")), None), timeout=1)
+    wait("tray menu reflects the removed root", lambda: any(
+        props.get("label") == "감시 중 · 경로 1개" for _, props, _ in host.layout()
+    ))
+    assert all(props.get("label") != str(extra) for _, props, _ in host.layout())
+    check_icon("active", "FileScope: 감시 중")
+    stopped = extra / "untracked.txt"
+    stopped.touch()
+    extra_files = find(main, "파일 목록")
+    wait("stopped root still refreshes the list", lambda: row(extra_files, stopped.name))
+    assert not row(log, str(stopped), 2) and not recorded(stopped)
+    assert row(log, str(tracked), 2) and recorded(tracked)
+    print("PASS summary stop button, header/tray update and retained history", flush=True)
+
+    click(find(summary, f"감시 중지: {fixture / 'home'}", Atspi.Role.PUSH_BUTTON))
+    check_icon("paused", "FileScope: 감시 경로 없음", timeout=1)
+    wait("tray menu shows no roots", lambda: any(
+        props.get("label") == "FileScope: 감시 경로 없음" for _, props, _ in host.layout()
+    ))
+    click(find(summary, "요약 닫기"))
+    focus_window(find(main, "경로 표시줄 편집"))
+    key("Escape")
+    navigate(app, fixture / "home")
+    click(find(main, "감시 시작", Atspi.Role.PUSH_BUTTON))
+    check_icon("active", "FileScope: 감시 중")
+    print("PASS last watch changes native tray icon and accessible status", flush=True)
 
     host.activate("감시 일시 정지")
     summary = open_summary()

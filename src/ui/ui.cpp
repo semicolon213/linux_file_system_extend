@@ -33,6 +33,7 @@
 #include <gdk/gdkkeysyms.h>
 #include <giomm/appinfo.h>
 #include <giomm/file.h>
+#include <giomm/filemonitor.h>
 #include <glib.h>
 #include <glibmm/fileutils.h>
 #include <glibmm/i18n.h>
@@ -49,6 +50,7 @@ constexpr std::size_t kMaxLogRows = 500;
 constexpr std::size_t kMaxSessionEvents = 200'000;
 constexpr int kWindowWidth = 1366;
 constexpr int kWindowHeight = 860;
+constexpr int kToastBottomMargin = 40;
 
 std::string window_config_path() {
     return Glib::build_filename(Glib::get_user_config_dir(), "filescope", "window.ini");
@@ -599,7 +601,8 @@ class MainWindow::Impl : public sigc::trackable {
         std::unique_ptr<Gtk::Menu> blank_menu;
         Gtk::MenuItem *row_paste = nullptr;
         Gtk::MenuItem *blank_paste = nullptr;
-        Gtk::MenuItem *start_watch = nullptr;
+        Gtk::MenuItem *watch_action = nullptr;
+        sigc::connection selection_changed;
         Gtk::Stack *state = nullptr;
         Gtk::Label *error_label = nullptr;
         std::uint64_t generation = 0;
@@ -667,6 +670,7 @@ class MainWindow::Impl : public sigc::trackable {
         if (completion_cancel_) {
             completion_cancel_->cancel();
         }
+        stop_list_monitor();
         for (auto &tab : tabs_) {
             if (tab->cancellable) {
                 tab->cancellable->cancel();
@@ -763,11 +767,12 @@ class MainWindow::Impl : public sigc::trackable {
         toast_->set_halign(Gtk::ALIGN_END);
         toast_->set_valign(Gtk::ALIGN_END);
         toast_->set_margin_end(12);
-        toast_->set_margin_bottom(40);
+        toast_->set_margin_bottom(kToastBottomMargin);
         toast_label_ = Gtk::make_managed<Gtk::Label>();
         add_class(*toast_label_, "fs-toast");
         toast_->add(*toast_label_);
         overlay->add_overlay(*toast_);
+        overlay->set_overlay_pass_through(*toast_, true);
 
         header_ = Gtk::make_managed<Gtk::HeaderBar>();
         header_->set_show_close_button(true);
@@ -1000,7 +1005,7 @@ class MainWindow::Impl : public sigc::trackable {
         band_box_->pack_start(*band_label_, true, true);
         watch_start_ = Gtk::make_managed<Gtk::Button>("감시 시작");
         watch_start_->set_no_show_all(true);
-        watch_start_->signal_clicked().connect(sigc::mem_fun(*this, &Impl::start_folder_watch));
+        watch_start_->signal_clicked().connect(sigc::mem_fun(*this, &Impl::toggle_folder_watch));
         band_box_->pack_start(*watch_start_, false, false);
         stale_parent_ = Gtk::make_managed<Gtk::Button>("상위 폴더로 이동");
         stale_parent_->set_no_show_all(true);
@@ -1036,6 +1041,27 @@ class MainWindow::Impl : public sigc::trackable {
         job_result_row->pack_end(*dismiss_job_result, false, false);
         job_result_->add(*job_result_row);
         right->pack_start(*job_result_, false, false);
+        trash_failure_ = Gtk::make_managed<Gtk::Revealer>();
+        auto *failure_row = Gtk::make_managed<Gtk::Box>(Gtk::ORIENTATION_HORIZONTAL, 8);
+        add_class(*failure_row, "fs-band");
+        trash_failure_label_ = Gtk::make_managed<Gtk::Label>();
+        trash_failure_label_->set_xalign(0.0F);
+        trash_failure_label_->set_line_wrap(true);
+        auto *delete_failed = Gtk::make_managed<Gtk::Button>("영구 삭제…");
+        delete_failed->signal_clicked().connect([this] {
+            const auto paths = failed_trash_paths_;
+            if (confirm_permanent_delete(paths)) {
+                clear_trash_failure();
+            }
+        });
+        auto *dismiss_failure = Gtk::make_managed<Gtk::Button>("닫기");
+        set_accessible(*dismiss_failure, "휴지통 이동 실패 닫기");
+        dismiss_failure->signal_clicked().connect(sigc::mem_fun(*this, &Impl::clear_trash_failure));
+        failure_row->pack_start(*trash_failure_label_, true, true);
+        failure_row->pack_start(*delete_failed, false, false);
+        failure_row->pack_start(*dismiss_failure, false, false);
+        trash_failure_->add(*failure_row);
+        right->pack_start(*trash_failure_, false, false);
         notebook_ = Gtk::make_managed<Gtk::Notebook>();
         notebook_->set_scrollable(true);
         notebook_->signal_switch_page().connect(sigc::mem_fun(*this, &Impl::switch_tab));
@@ -1819,15 +1845,25 @@ class MainWindow::Impl : public sigc::trackable {
         job_box_ = Gtk::make_managed<Gtk::Box>(Gtk::ORIENTATION_HORIZONTAL, 8);
         add_class(*job_box_, "fs-job");
         job_label_ = Gtk::make_managed<Gtk::Label>("작업 준비");
+        job_label_->set_ellipsize(Pango::ELLIPSIZE_MIDDLE);
         job_progress_ = Gtk::make_managed<Gtk::ProgressBar>();
         job_progress_->set_hexpand(true);
         job_cancel_ = Gtk::make_managed<Gtk::Button>("취소");
         job_cancel_->signal_clicked().connect(sigc::mem_fun(*this, &Impl::cancel_job));
         job_box_->pack_start(*job_label_, false, false);
         job_box_->pack_start(*job_progress_, true, true);
+        job_waiting_ = Gtk::make_managed<Gtk::Button>();
+        job_waiting_->signal_clicked().connect(sigc::mem_fun(*this, &Impl::show_waiting_jobs));
+        job_box_->pack_start(*job_waiting_, false, false);
         job_box_->pack_start(*job_cancel_, false, false);
         job_box_->show_all();
+        job_waiting_->hide();
         job_box_->hide();
+        job_box_->signal_size_allocate().connect([this](Gtk::Allocation &allocation) {
+            if (job_box_->get_visible()) {
+                toast_->set_margin_bottom(kToastBottomMargin + allocation.get_height());
+            }
+        });
         job_box_->set_no_show_all(true);
         root_->pack_start(*job_box_, false, false);
 
@@ -1912,13 +1948,13 @@ class MainWindow::Impl : public sigc::trackable {
         tab->tree->get_column(5)->set_fixed_width(104);
         tab->tree->signal_row_activated().connect(
             sigc::bind(sigc::mem_fun(*this, &Impl::activate_file), tab.get()));
-        tab->tree->get_selection()->signal_changed().connect(
-            sigc::mem_fun(*this, &Impl::update_status));
-        tab->tree->get_selection()->signal_changed().connect([this, current = tab.get()] {
-            if (current && current_tab() == current) {
-                update_panel_target(*current);
-            }
-        });
+        tab->selection_changed =
+            tab->tree->get_selection()->signal_changed().connect([this, current = tab.get()] {
+                if (current && current_tab() == current) {
+                    update_status();
+                    update_panel_target(*current);
+                }
+            });
 
         tab->state = Gtk::make_managed<Gtk::Stack>();
         auto *scroll = Gtk::make_managed<Gtk::ScrolledWindow>();
@@ -2009,7 +2045,10 @@ class MainWindow::Impl : public sigc::trackable {
     void popup_file_menu(Tab &tab, bool on_row, const GdkEvent *event = nullptr) {
         tab.row_paste->set_sensitive(!clipboard_.empty());
         tab.blank_paste->set_sensitive(!clipboard_.empty());
-        tab.start_watch->set_visible(watcher_ && watcher_->find_root(tab.history.current()) == 0);
+        tab.watch_action->set_visible(static_cast<bool>(watcher_));
+        tab.watch_action->set_label(watcher_ && watcher_->find_root(tab.history.current()) != 0
+                                        ? "이 폴더 감시 중지"
+                                        : "이 폴더 감시 시작");
         auto &menu = on_row ? *tab.menu : *tab.blank_menu;
         if (event != nullptr) {
             menu.popup_at_pointer(event);
@@ -2054,8 +2093,8 @@ class MainWindow::Impl : public sigc::trackable {
         add_class(blank, "fs-file-menu");
         append_create_actions(blank);
         tab.blank_paste = &append_menu_action(blank, "붙여넣기", paste, "<Control>v");
-        tab.start_watch = &append_menu_action(blank, "이 폴더 감시 시작",
-                                              sigc::mem_fun(*this, &Impl::start_folder_watch));
+        tab.watch_action = &append_menu_action(blank, "이 폴더 감시 시작",
+                                               sigc::mem_fun(*this, &Impl::toggle_folder_watch));
         blank.attach_to_widget(*tab.state);
         blank.show_all();
 
@@ -2102,6 +2141,7 @@ class MainWindow::Impl : public sigc::trackable {
 
     void switch_tab(Gtk::Widget *, guint page) {
         if (page < tabs_.size()) {
+            update_list_monitor(*tabs_[page]);
             search_->set_text("");
             set_session_folder(tabs_[page]->history.current());
             update_navigation(*tabs_[page]);
@@ -2128,29 +2168,84 @@ class MainWindow::Impl : public sigc::trackable {
         load_tab(*tab);
     }
 
-    void load_tab(Tab &tab) {
+    void stop_list_monitor() {
+        list_refresh_timer_.disconnect();
+        list_monitor_changed_.disconnect();
+        if (list_monitor_) {
+            list_monitor_->cancel();
+            list_monitor_.reset();
+        }
+        list_monitor_path_.clear();
+    }
+
+    void update_list_monitor(const Tab &tab) {
+        const auto &path = tab.history.current();
+        if (tab.pending_history || (watcher_ && watcher_->find_root(path) != 0) ||
+            tab.state->get_visible_child_name() == "error") {
+            stop_list_monitor();
+            return;
+        }
+        if (path == list_monitor_path_) {
+            return;
+        }
+        stop_list_monitor();
+        try {
+            list_monitor_ = Gio::File::create_for_path(path)->monitor_directory();
+        } catch (const Glib::Error &) {
+            return;
+        }
+        list_monitor_path_ = path;
+        list_monitor_changed_ = list_monitor_->signal_changed().connect(
+            [this](const Glib::RefPtr<Gio::File> &, const Glib::RefPtr<Gio::File> &,
+                   Gio::FileMonitorEvent) {
+                if (!list_refresh_timer_.connected()) {
+                    list_refresh_timer_ = Glib::signal_timeout().connect(
+                        [this] {
+                            auto *tab = current_tab();
+                            if (tab != nullptr && tab->history.current() == list_monitor_path_) {
+                                refresh_list(*tab);
+                            }
+                            return false;
+                        },
+                        200);
+                }
+            });
+    }
+
+    void refresh_list(Tab &tab) {
+        if (!tab.pending_history && can_modify(&tab)) {
+            load_tab(tab, true);
+        }
+    }
+
+    void load_tab(Tab &tab, bool background = false) {
+        if (tab.pending_history && current_tab() == &tab) {
+            stop_list_monitor();
+        }
         if (tab.cancellable) {
             tab.cancellable->cancel();
         }
         tab.cancellable = Gio::Cancellable::create();
         ++tab.generation;
-        if (window_.get_focus() == tab.tree) {
-            window_.unset_focus();
+        if (!background) {
+            if (window_.get_focus() == tab.tree) {
+                window_.unset_focus();
+            }
+            tab.state->set_visible_child("loading");
+            status_->set_text("불러오는 중…");
+            update_navigation(tab);
         }
-        tab.state->set_visible_child("loading");
         if (tab.pending_history && current_tab() == &tab) {
             panel_->set_target({});
         }
-        status_->set_text("불러오는 중…");
-        update_navigation(tab);
         const auto &history = tab.pending_history ? *tab.pending_history : tab.history;
         nav::list_dir_async(
             history.current(), tab.show_hidden, false, tab.cancellable,
-            sigc::bind(sigc::mem_fun(*this, &Impl::finish_list), &tab, tab.generation));
+            sigc::bind(sigc::mem_fun(*this, &Impl::finish_list), &tab, tab.generation, background));
     }
 
     void finish_list(core::Result<std::vector<core::Entry>> result, Tab *tab,
-                     std::uint64_t generation) {
+                     std::uint64_t generation, bool background) {
         if (shutdown_ || generation != tab->generation) {
             return;
         }
@@ -2165,6 +2260,7 @@ class MainWindow::Impl : public sigc::trackable {
             tab->pending_selection.reset();
             tab->pending_change.reset();
             if (current_tab() == tab) {
+                update_list_monitor(*tab);
                 update_navigation(*tab);
                 update_status();
                 search_->set_text("");
@@ -2175,6 +2271,15 @@ class MainWindow::Impl : public sigc::trackable {
         if (tab->pending_history) {
             tab->history = std::move(*tab->pending_history);
             tab->pending_history.reset();
+        }
+        const auto selection = tab->tree->get_selection();
+        std::vector<std::string> selected;
+        if (background) {
+            for (const auto &path : selection->get_selected_rows()) {
+                const auto entry = tab->model->get_iter(path);
+                selected.push_back((*entry)[file_columns_.path]);
+            }
+            tab->selection_changed.block();
         }
         tab->rows.clear();
         tab->model->clear();
@@ -2196,6 +2301,19 @@ class MainWindow::Impl : public sigc::trackable {
         for (const auto &entry : entries) {
             append_entry(*tab, entry);
         }
+        for (const auto &path : selected) {
+            const auto entry = tab->rows.find(path);
+            if (entry != tab->rows.end()) {
+                selection->select(entry->second);
+            }
+        }
+        if (background) {
+            tab->selection_changed.unblock();
+            if (current_tab() == tab &&
+                static_cast<std::size_t>(selection->count_selected_rows()) != selected.size()) {
+                update_panel_target(*tab);
+            }
+        }
         tab->state->set_visible_child(entries.empty() ? "empty" : "list");
         if (tab->pending_selection) {
             if (select_file(*tab, *tab->pending_selection) && current_tab() == tab &&
@@ -2208,8 +2326,11 @@ class MainWindow::Impl : public sigc::trackable {
             focus_change(*tab, *change);
         }
         if (current_tab() == tab) {
-            update_navigation(*tab);
-            update_watch_band();
+            if (!background) {
+                update_navigation(*tab);
+                update_watch_band();
+            }
+            update_list_monitor(*tab);
             update_status();
             if (!search_->get_text().empty() && center_->get_visible_child_name() == "folders") {
                 start_search();
@@ -2635,21 +2756,44 @@ class MainWindow::Impl : public sigc::trackable {
             if (result.ok()) {
                 trash_jobs_.insert(result.value());
             }
-            handle_job_submit(result, "휴지통으로 이동");
+            handle_job_submit(result, "휴지통으로 이동", true);
             return;
+        }
+        confirm_permanent_delete(paths);
+    }
+
+    bool confirm_permanent_delete(const std::vector<std::string> &paths) {
+        if (paths.empty()) {
+            return false;
         }
         // design-pending: U-6
         Gtk::MessageDialog dialog(window_, "영구 삭제하시겠습니까?", false, Gtk::MESSAGE_WARNING,
                                   Gtk::BUTTONS_NONE, true);
         dialog.set_secondary_text(std::to_string(paths.size()) + "개 항목 · " +
                                   display_path(basename(paths.front())));
-        dialog.add_button("취소", Gtk::RESPONSE_CANCEL);
+        auto *cancel = dialog.add_button("취소", Gtk::RESPONSE_CANCEL);
         dialog.add_button("영구 삭제", Gtk::RESPONSE_OK);
         dialog.set_default_response(Gtk::RESPONSE_CANCEL);
-        if (dialog.run() == Gtk::RESPONSE_OK) {
-            handle_job_submit(fs::delete_permanently(queue_, paths, fs::Confirmation::CONFIRMED),
-                              "영구 삭제");
+        dialog.set_focus(*cancel);
+        if (dialog.run() != Gtk::RESPONSE_OK) {
+            return false;
         }
+        const auto result = fs::delete_permanently(queue_, paths, fs::Confirmation::CONFIRMED);
+        handle_job_submit(result, "영구 삭제");
+        return result.ok();
+    }
+
+    bool confirm_overwrite(std::size_t count) {
+        Gtk::MessageDialog dialog(window_, std::to_string(count) + "개 항목을 덮어씁니다.", false,
+                                  Gtk::MESSAGE_WARNING, Gtk::BUTTONS_NONE, true);
+        dialog.set_secondary_text("덮어쓴 파일은 감시 중일 때만 이력에 남습니다");
+        auto *cancel = dialog.add_button("취소", Gtk::RESPONSE_CANCEL);
+        auto *overwrite = dialog.add_button("덮어쓰기", Gtk::RESPONSE_OK);
+        add_class(*overwrite, "fs-danger-confirm");
+        dialog.set_default_response(Gtk::RESPONSE_CANCEL);
+        dialog.show_all();
+        cancel->grab_focus();
+        return dialog.run() == Gtk::RESPONSE_OK;
     }
 
     void paste_clipboard() {
@@ -2667,7 +2811,7 @@ class MainWindow::Impl : public sigc::trackable {
         if (!conflicts.value().empty()) {
             // design-pending: U-6
             Gtk::Dialog dialog("같은 이름의 항목", window_, true);
-            dialog.add_button("취소", Gtk::RESPONSE_CANCEL);
+            auto *cancel = dialog.add_button("취소", Gtk::RESPONSE_CANCEL);
             dialog.add_button("건너뛰기", 1);
             dialog.add_button("둘 다 유지", 2);
             dialog.add_button("덮어쓰기", 3);
@@ -2676,13 +2820,19 @@ class MainWindow::Impl : public sigc::trackable {
                                                         "개 이름이 겹칩니다");
             dialog.get_content_area()->pack_start(*label, false, false, 12);
             dialog.show_all();
+            cancel->grab_focus();
             const int response = dialog.run();
+            dialog.hide();
             if (response < 1 || response > 3) {
                 return;
             }
             policy = response == 1   ? fs::ConflictPolicy::SKIP
                      : response == 2 ? fs::ConflictPolicy::KEEP_BOTH
                                      : fs::ConflictPolicy::OVERWRITE;
+        }
+        if (policy == fs::ConflictPolicy::OVERWRITE &&
+            !confirm_overwrite(conflicts.value().size())) {
+            return;
         }
         const fs::Confirmation confirmation = policy == fs::ConflictPolicy::OVERWRITE
                                                   ? fs::Confirmation::CONFIRMED
@@ -2697,16 +2847,18 @@ class MainWindow::Impl : public sigc::trackable {
         }
     }
 
-    void handle_job_submit(const core::Result<job::JobId> &result, const Glib::ustring &title) {
+    void handle_job_submit(const core::Result<job::JobId> &result, const Glib::ustring &title,
+                           bool to_trash = false) {
         if (!result.ok()) {
             show_band("⚠ 작업을 시작할 수 없습니다", false);
             return;
         }
-        file_jobs_.emplace(result.value(), title);
+        file_jobs_.emplace(result.value(), FileJob{title, to_trash});
         job_result_->set_reveal_child(false);
         if (!active_job_) {
             show_next_job();
         }
+        update_waiting_jobs();
     }
 
     void show_next_job() {
@@ -2714,11 +2866,13 @@ class MainWindow::Impl : public sigc::trackable {
             active_job_.reset();
             job_pulse_ = false;
             job_box_->hide();
+            toast_->set_margin_bottom(kToastBottomMargin);
             return;
         }
         const auto &next = *file_jobs_.begin();
         active_job_ = next.first;
-        job_label_->set_text(next.second);
+        job_label_->set_text(next.second.title);
+        job_cancel_->set_sensitive(true);
         job_progress_->pulse();
         job_pulse_ = true;
         job_box_->show();
@@ -2726,13 +2880,43 @@ class MainWindow::Impl : public sigc::trackable {
 
     void cancel_job() {
         if (active_job_.has_value()) {
-            queue_.cancel(active_job_.value());
             job_label_->set_text("취소 중…");
+            job_cancel_->set_sensitive(false);
+            queue_.cancel(active_job_.value());
         }
     }
 
+    void update_waiting_jobs() {
+        const auto waiting =
+            std::count_if(file_jobs_.begin(), file_jobs_.end(), [this](const auto &job) {
+                return job.first != active_job_ && queue_.state(job.first) == job::JobState::QUEUED;
+            });
+        job_waiting_->set_label("대기 " + std::to_string(waiting) + "개");
+        job_waiting_->set_visible(waiting != 0);
+    }
+
+    void show_waiting_jobs() {
+        Gtk::Dialog dialog("대기 작업", window_, true);
+        dialog.add_button("닫기", Gtk::RESPONSE_CLOSE);
+        dialog.set_default_response(Gtk::RESPONSE_CLOSE);
+        for (const auto &[id, job] : file_jobs_) {
+            if (id != active_job_ && queue_.state(id) == job::JobState::QUEUED) {
+                auto *cancel = Gtk::make_managed<Gtk::Button>(job.title + " 취소");
+                cancel->signal_clicked().connect([this, id, &dialog] {
+                    dialog.response(Gtk::RESPONSE_CLOSE);
+                    if (queue_.state(id) == job::JobState::QUEUED) {
+                        queue_.cancel(id);
+                    }
+                });
+                dialog.get_content_area()->pack_start(*cancel, false, false);
+            }
+        }
+        dialog.show_all();
+        dialog.run();
+    }
+
     void on_job_progress(job::JobId id, const job::Progress &progress) {
-        if (!active_job_.has_value() || id != active_job_.value()) {
+        if (id != active_job_ || !job_cancel_->get_sensitive()) {
             return;
         }
         if (progress.bytes_total > 0 || progress.items_total > 0) {
@@ -2747,7 +2931,35 @@ class MainWindow::Impl : public sigc::trackable {
             job_pulse_ = true;
             job_progress_->pulse();
         }
-        job_label_->set_text(display_path(progress.current_path));
+        if (!progress.current_path.empty()) {
+            job_label_->set_text(display_path(progress.current_path));
+        }
+    }
+
+    void clear_trash_failure() {
+        failed_trash_paths_.clear();
+        trash_failure_->set_reveal_child(false);
+    }
+
+    void show_trash_failure(const std::vector<job::ItemResult> &results) {
+        failed_trash_paths_.clear();
+        std::string reason;
+        for (const auto &item : results) {
+            if (item.error && !item.skipped) {
+                failed_trash_paths_.push_back(item.path);
+                if (reason.empty()) {
+                    reason = item.error->code == core::ErrorCode::NOT_SUPPORTED
+                                 ? "홈 휴지통으로 옮길 수 없습니다"
+                                 : display_path(item.error->message);
+                }
+            }
+        }
+        if (!failed_trash_paths_.empty()) {
+            trash_failure_label_->set_text("⚠ 휴지통 이동 실패 · " +
+                                           std::to_string(failed_trash_paths_.size()) +
+                                           "개 항목 · " + reason);
+            trash_failure_->set_reveal_child(true);
+        }
     }
 
     void on_job_state(job::JobId id, job::JobState state, const std::optional<core::Error> &error) {
@@ -2757,6 +2969,10 @@ class MainWindow::Impl : public sigc::trackable {
         }
         if (panel_->finish_text_job(id, error)) {
             queue_.forget(id);
+            return;
+        }
+        const auto file_job = file_jobs_.find(id);
+        if (file_job == file_jobs_.end()) {
             return;
         }
         const auto results = queue_.results(id);
@@ -2775,9 +2991,13 @@ class MainWindow::Impl : public sigc::trackable {
                     show_trash_conflict();
                 }
             }
-            show_band("⚠ 일부 항목을 처리하지 못했습니다 (" + std::to_string(results.size()) +
-                          "개 결과)",
-                      false);
+            if (file_job->second.to_trash) {
+                show_trash_failure(results);
+            } else {
+                show_band("⚠ 일부 항목을 처리하지 못했습니다 (" + std::to_string(results.size()) +
+                              "개 결과)",
+                          false);
+            }
         } else if (state == job::JobState::CANCELLED) {
             const auto complete =
                 std::count_if(results.begin(), results.end(), [](const job::ItemResult &item) {
@@ -2790,12 +3010,13 @@ class MainWindow::Impl : public sigc::trackable {
             show_toast("파일 작업을 완료했습니다");
         }
         queue_.forget(id);
-        file_jobs_.erase(id);
+        file_jobs_.erase(file_job);
         if (active_job_ == id) {
             show_next_job();
         }
+        update_waiting_jobs();
         if (current_tab() != nullptr) {
-            load_tab(*current_tab());
+            refresh_list(*current_tab());
         }
     }
 
@@ -3107,6 +3328,11 @@ class MainWindow::Impl : public sigc::trackable {
         previous = info.state;
         if (info.state == mon::WatchState::STOPPED) {
             watch_states_.erase(info.id);
+            if (info.reason == mon::WatchReason::USER) {
+                deleted_roots_.erase(info.path);
+                update_watch_band();
+                show_toast("감시를 중지했습니다");
+            }
         }
         if (info.reason == mon::WatchReason::ROOT_DELETED) {
             deleted_roots_.insert(info.path);
@@ -3144,20 +3370,35 @@ class MainWindow::Impl : public sigc::trackable {
                 load_tab(*tab);
             }
         }
+        if (auto *tab = current_tab()) {
+            update_list_monitor(*tab);
+        }
         update_metrics();
         update_tray();
     }
 
-    void start_folder_watch() {
+    void stop_folder_watch(core::WatchId id) {
+        if (watcher_ && !watcher_->remove_root(id)) {
+            show_band("⚠ 감시를 중지할 수 없습니다", false);
+        }
+    }
+
+    void toggle_folder_watch() {
         auto *tab = current_tab();
         if (!watcher_ || tab == nullptr) {
             return;
         }
-        const auto result = watcher_->add_root(tab->history.current(), mon::WatchMode::RECURSIVE);
+        const auto &path = tab->history.current();
+        if (const auto root = watcher_->find_root(path); root != 0) {
+            stop_folder_watch(root);
+            return;
+        }
+        const auto result = watcher_->add_root(path, mon::WatchMode::RECURSIVE);
         if (!result.ok()) {
             show_band("⚠ 감시를 시작할 수 없습니다", false);
         } else {
             watch_start_failed_ = false;
+            update_list_monitor(*tab);
         }
         update_tray();
     }
@@ -3177,12 +3418,14 @@ class MainWindow::Impl : public sigc::trackable {
             }
         }
         tab->tree->set_sensitive(true);
-        if (watcher_->find_root(path) == 0) {
-            show_band("이 폴더를 감시하지 않습니다", true);
-            watch_start_->show();
-        } else if (watch_start_->get_visible() || stale_parent_->get_visible()) {
-            hide_band();
+        const bool watched = watcher_->find_root(path) != 0;
+        if (!watched || watch_start_->get_visible() || stale_parent_->get_visible() ||
+            !band_->get_reveal_child()) {
+            show_band(watched ? "이 폴더를 감시하고 있습니다" : "이 폴더를 감시하지 않습니다",
+                      true);
         }
+        watch_start_->set_label(watched ? "감시 중지" : "감시 시작");
+        watch_start_->show();
     }
 
     void show_band(const Glib::ustring &message, bool quiet) {
@@ -3330,7 +3573,9 @@ class MainWindow::Impl : public sigc::trackable {
                                        root.reason != mon::WatchReason::OVERFLOW);
                            });
         auto state = overflow_acknowledged_ ? TrayState::ACTIVE : overflow_state_;
-        if (paused()) {
+        if (roots.empty() && !error) {
+            state = TrayState::IDLE;
+        } else if (paused()) {
             state = TrayState::PAUSED;
         } else if (error) {
             state = TrayState::ERROR;
@@ -3348,7 +3593,7 @@ class MainWindow::Impl : public sigc::trackable {
                 break;
             }
         }
-        const bool can_pause = static_cast<bool>(watcher_);
+        const bool can_pause = !roots.empty();
         tray_->update(state, tray_items(state, roots, changes, can_pause));
         if (summary_) {
             const auto notice = error ? "⚠ 감시 중 오류가 발생했습니다" : overflow_notice_;
@@ -3365,7 +3610,8 @@ class MainWindow::Impl : public sigc::trackable {
         case TrayAction::SUMMARY:
             if (!summary_) {
                 summary_ =
-                    std::make_unique<SummaryWindow>(sigc::mem_fun(*this, &Impl::on_tray_action));
+                    std::make_unique<SummaryWindow>(sigc::mem_fun(*this, &Impl::on_tray_action),
+                                                    sigc::mem_fun(*this, &Impl::stop_folder_watch));
             }
             overflow_acknowledged_ = true;
             update_tray();
@@ -3448,10 +3694,13 @@ class MainWindow::Impl : public sigc::trackable {
     }
 
     void update_metrics() {
-        const std::size_t roots = watcher_ ? watcher_->list_roots().size() : 0;
+        const auto roots = watcher_ ? watcher_->list_roots() : std::vector<mon::WatchInfo>{};
+        const auto count = std::count_if(roots.begin(), roots.end(), [](const auto &root) {
+            return root.state != mon::WatchState::STOPPED;
+        });
         const auto latency = dash_.latency_p95_ns();
         std::ostringstream text;
-        text << "감시 경로 " << roots << "   최근 1분 " << recent_rate();
+        text << "감시 경로 " << count << "   최근 1분 " << recent_rate();
         if (latency.has_value()) {
             text << "   반영 지연 P95 " << latency.value() / 1000000 << "ms";
         }
@@ -3594,6 +3843,9 @@ class MainWindow::Impl : public sigc::trackable {
     Gtk::Label *band_label_ = nullptr;
     Gtk::Revealer *job_result_ = nullptr;
     Gtk::Label *job_result_label_ = nullptr;
+    Gtk::Revealer *trash_failure_ = nullptr;
+    Gtk::Label *trash_failure_label_ = nullptr;
+    std::vector<std::string> failed_trash_paths_;
     Gtk::Button *watch_start_ = nullptr;
     Gtk::Button *stale_parent_ = nullptr;
     Gtk::Notebook *notebook_ = nullptr;
@@ -3612,6 +3864,7 @@ class MainWindow::Impl : public sigc::trackable {
     Gtk::Label *job_label_ = nullptr;
     Gtk::ProgressBar *job_progress_ = nullptr;
     Gtk::Button *job_cancel_ = nullptr;
+    Gtk::Button *job_waiting_ = nullptr;
     std::array<Gtk::Label *, 5> count_labels_{};
     Gtk::Label *session_truncated_ = nullptr;
     std::vector<Gtk::ToggleButton *> filter_buttons_;
@@ -3636,6 +3889,10 @@ class MainWindow::Impl : public sigc::trackable {
     sigc::connection watcher_state_;
     sigc::connection queue_state_;
     sigc::connection queue_progress_;
+    Glib::RefPtr<Gio::FileMonitor> list_monitor_;
+    std::string list_monitor_path_;
+    sigc::connection list_monitor_changed_;
+    sigc::connection list_refresh_timer_;
     std::deque<core::EventPtr> session_events_;
     std::deque<core::EventPtr> scoped_log_;
     std::string session_folder_;
@@ -3644,7 +3901,11 @@ class MainWindow::Impl : public sigc::trackable {
     std::vector<std::string> clipboard_;
     bool clipboard_cut_ = false;
     std::optional<job::JobId> active_job_;
-    std::map<job::JobId, Glib::ustring> file_jobs_;
+    struct FileJob {
+        Glib::ustring title;
+        bool to_trash;
+    };
+    std::map<job::JobId, FileJob> file_jobs_;
     bool job_pulse_ = false;
     std::vector<std::unique_ptr<Gtk::Window>> chart_windows_;
     std::vector<CandleChart *> detached_charts_;

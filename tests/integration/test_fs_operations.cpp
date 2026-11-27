@@ -133,12 +133,13 @@ void test_conflict_policies() {
                     static_cast<int>(JobState::DONE));
     g_assert_true(queue.results(skipped.value()).front().skipped);
 
-    const auto kept = filescope::fs::copy(queue, {source}, destination, ConflictPolicy::KEEP_BOTH,
-                                          Confirmation::NONE);
-    g_assert_true(kept.ok());
-    g_assert_cmpint(static_cast<int>(wait_for_terminal(queue, kept.value())), ==,
-                    static_cast<int>(JobState::DONE));
-    g_assert_true(read_file(join(destination, "a (2).txt")) == "new");
+    for (const auto *name : {"a (1).txt", "a (2).txt"}) {
+        const auto kept = filescope::fs::copy(queue, {source}, destination,
+                                              ConflictPolicy::KEEP_BOTH, Confirmation::NONE);
+        g_assert_true(kept.ok());
+        g_assert_true(wait_for_terminal(queue, kept.value()) == JobState::DONE);
+        g_assert_true(read_file(join(destination, name)) == "new");
+    }
 
     const auto unconfirmed = filescope::fs::copy(queue, {source}, destination,
                                                  ConflictPolicy::OVERWRITE, Confirmation::NONE);
@@ -153,6 +154,31 @@ void test_conflict_policies() {
     g_assert_cmpint(static_cast<int>(wait_for_terminal(queue, overwritten.value())), ==,
                     static_cast<int>(JobState::DONE));
     g_assert_true(read_file(target) == "new");
+}
+
+void test_keep_both_name_too_long() {
+    filescope::test::TestEnvironment environment;
+    const auto source_dir = join(environment.root(), "source");
+    const auto destination = join(environment.root(), "destination");
+    make_directory(source_dir);
+    make_directory(destination);
+    const long max_name = pathconf(destination.c_str(), _PC_NAME_MAX);
+    g_assert_cmpint(max_name, >, 0);
+    const std::string name(static_cast<std::size_t>(max_name), 'x');
+    const auto source = join(source_dir, name);
+    write_file(source, "source");
+    write_file(join(destination, name), "existing");
+
+    JobQueue queue;
+    const auto kept = filescope::fs::copy(queue, {source}, destination, ConflictPolicy::KEEP_BOTH,
+                                          Confirmation::NONE);
+    g_assert_true(kept.ok());
+    g_assert_true(wait_for_terminal(queue, kept.value()) == JobState::FAILED);
+    const auto items = queue.results(kept.value());
+    g_assert_cmpuint(items.size(), ==, 1);
+    const auto &error = items.front().error;
+    g_assert_true(error && error->code == ErrorCode::NAME_TOO_LONG);
+    g_assert_true(read_file(join(destination, name)) == "existing");
 }
 
 void test_move_and_delete() {
@@ -542,6 +568,7 @@ int main(int argc, char **argv) {
     g_test_init(&argc, &argv, nullptr);
     g_test_add_func("/fs/integration/copy-tree", test_copy_tree_and_special_file);
     g_test_add_func("/fs/integration/conflicts", test_conflict_policies);
+    g_test_add_func("/fs/integration/keep-both-name-too-long", test_keep_both_name_too_long);
     g_test_add_func("/fs/integration/move-delete", test_move_and_delete);
     g_test_add_func("/fs/integration/move-overwrite", test_move_overwrite);
     g_test_add_func("/fs/integration/move-cross-device", test_move_cross_device);

@@ -375,14 +375,23 @@ core::Result<void> remove_entry(const Entry &path, const Removal &removal) {
     return {};
 }
 
-std::string keep_both_path(const std::string &target) {
+struct ResolvedTarget {
+    std::string path;
+    bool skipped = false;
+    bool replace = false;
+};
+
+core::Result<ResolvedTarget> keep_both_path(const std::string &target, const job::Job &job) {
     const std::string directory = parent_path(target);
     const std::string name = base_name(target);
     const std::size_t dot = name.find_last_of('.');
     const bool has_extension = dot != std::string::npos && dot != 0;
     const std::string stem = has_extension ? name.substr(0, dot) : name;
     const std::string extension = has_extension ? name.substr(dot) : "";
-    for (unsigned index = 2;; ++index) {
+    for (unsigned index = 1;; ++index) {
+        if (job.is_cancelled()) {
+            return cancelled_error();
+        }
         std::string candidate_name = stem;
         candidate_name += " (";
         candidate_name += std::to_string(index);
@@ -390,21 +399,19 @@ std::string keep_both_path(const std::string &target) {
         candidate_name += extension;
         const std::string candidate = core::path_join(directory, candidate_name);
         struct stat ignored {};
-        if (lstat(candidate.c_str(), &ignored) != 0 && errno == ENOENT) {
-            return candidate;
+        if (lstat(candidate.c_str(), &ignored) != 0) {
+            if (errno == ENOENT) {
+                return ResolvedTarget{candidate};
+            }
+            return core::error_from_errno(errno, "lstat", candidate);
         }
     }
 }
 
-struct ResolvedTarget {
-    std::string path;
-    bool skipped = false;
-    bool replace = false;
-};
-
 // NOLINTNEXTLINE(bugprone-easily-swappable-parameters): source and target follow the operation.
 core::Result<ResolvedTarget> resolve_target(const std::string &source, const std::string &target,
-                                            ConflictPolicy policy, Confirmation confirmation) {
+                                            ConflictPolicy policy, Confirmation confirmation,
+                                            const job::Job &job) {
     struct stat target_status {};
     if (lstat(target.c_str(), &target_status) != 0) {
         if (errno == ENOENT) {
@@ -419,7 +426,7 @@ core::Result<ResolvedTarget> resolve_target(const std::string &source, const std
     case ConflictPolicy::SKIP:
         return ResolvedTarget{target, true};
     case ConflictPolicy::KEEP_BOTH:
-        return ResolvedTarget{keep_both_path(target), false};
+        return keep_both_path(target, job);
     case ConflictPolicy::OVERWRITE: {
         if (confirmation != Confirmation::CONFIRMED) {
             return core::make_error(core::ErrorCode::NOT_CONFIRMED,
@@ -509,6 +516,9 @@ core::Result<void> copy_regular(const Entry &source, const Entry &target, const 
     if (futimens(target_fd.get(), times.data()) != 0 || fsync(target_fd.get()) != 0) {
         const int saved_errno = errno;
         return core::error_from_errno(saved_errno, "sync copied file", temporary.path);
+    }
+    if (job.is_cancelled()) {
+        return cancelled_error();
     }
     target_fd.reset();
     if (const auto renamed = rename_entry(temporary, target, replace); !renamed) {
@@ -726,6 +736,9 @@ core::Result<void> move_entry(const Snapshot &source, const std::string &target,
     if (!same_type(before.mode, source.type)) {
         return move_conflict();
     }
+    if (job.is_cancelled()) {
+        return cancelled_error();
+    }
     CopiedEntries copied{source.path.size(), {}};
     const bool directory = S_ISDIR(source.type);
     const auto move = [&](const std::string &staging) {
@@ -777,8 +790,12 @@ core::Result<void> process_copy(job::Job &job, const std::vector<Snapshot> &sour
             continue;
         }
         const std::string initial_target = core::path_join(dest_dir, base_name(source.path));
-        const auto resolved = resolve_target(source.path, initial_target, policy, confirmation);
+        const auto resolved =
+            resolve_target(source.path, initial_target, policy, confirmation, job);
         if (!resolved) {
+            if (resolved.error().code == core::ErrorCode::CANCELLED) {
+                return resolved.error();
+            }
             job.add_item_result({source.path, resolved.error(), false});
             ++completed;
             job.report_progress(0, completed, source.path);
@@ -933,8 +950,37 @@ core::Result<std::string> rename(const std::string &path, const std::string &new
 
 core::Result<void> trash(const std::string &path,
                          const Glib::RefPtr<Gio::Cancellable> &cancellable) {
+    if (cancellable && cancellable->is_cancelled()) {
+        return cancelled_error();
+    }
     if (const auto safe = validate_write_path(path, core::PathOp::REMOVE); !safe) {
         return safe.error();
+    }
+    struct stat source {};
+    if (lstat(path.c_str(), &source) != 0) {
+        return core::error_from_errno(errno, "lstat", path);
+    }
+    // GIO uses the parent device for non-directories, including on overlayfs.
+    const auto parent = parent_path(path);
+    if (!S_ISDIR(source.st_mode) && stat(parent.c_str(), &source) != 0) {
+        return core::error_from_errno(errno, "stat", parent);
+    }
+    struct stat home {};
+    const char *home_path = g_get_home_dir();
+    if (stat(home_path, &home) != 0) {
+        return core::error_from_errno(errno, "stat", home_path);
+    }
+    std::string destination = core::path_join(g_get_user_data_dir(), "Trash/files");
+    struct stat trash_status {};
+    while (stat(destination.c_str(), &trash_status) != 0) {
+        if (errno != ENOENT || destination == "/") {
+            return core::error_from_errno(errno, "stat", destination);
+        }
+        destination = parent_path(destination);
+    }
+    if (source.st_dev != home.st_dev || source.st_dev != trash_status.st_dev) {
+        return core::make_error(core::ErrorCode::NOT_SUPPORTED,
+                                "The home trash is on a different filesystem");
     }
     try {
         Gio::File::create_for_path(path)->trash(cancellable);
