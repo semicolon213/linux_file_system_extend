@@ -637,7 +637,7 @@ R2 의존 순서: {R2-T00, R2-T01 병렬} → {R2-T02(T00 뒤), R2-T03, R2-T04, 
   5. 목록 자동 갱신: 현재 탭 폴더가 감시 대상이 아니어도 `Gio::FileMonitor`(비재귀, 현재 폴더 하나)로 변경을 받아 목록을 다시 읽는다. 다시 읽기는 200ms로 묶고, 폴더를 옮기면 이전 모니터를 끊는다. 감시 이벤트·로그·집계에는 넣지 않는다(목록 갱신 전용).
   6. 번호: `fs` keep_both_path가 `(1)`부터 고른다.
   7. 감시 해제: UI에 `Watcher::remove_root`를 부르는 곳이 없어 감시를 끌 수 없다. 감시 중인 폴더를 보고 있으면 목록 위 띠의 "감시 시작" 자리에 "감시 중지" 버튼, 파일 목록 빈 곳 우클릭에 "이 폴더 감시 중지", 요약 창 감시 경로 행 오른쪽에 × 버튼(접근성 이름 "감시 중지: <경로>")을 둔다. 확인 창 없이 바로 해제하고 토스트 "감시를 중지했습니다"를 띄운다. 해제해도 로그·집계·이력은 지우지 않는다. 헤더 "감시 경로 N"과 트레이 메뉴·아이콘 상태가 바로 바뀐다.
-- 허용 파일: `src/ui/**`(tray.cpp 제외), `src/fs/**`, `src/job/**`, `tests/ui/**`, `tests/fs/**`, `tests/job/**`, `tests/integration/test_fs_operations.cpp`
+- 허용 파일: `src/ui/**`(tray.cpp는 SummaryWindow 구현과 "감시 경로 없음" 상태 매핑만, 2026-11-27 Coordinator 허용), `src/fs/**`, `src/job/**`, `tests/ui/**`, `tests/fs/**`, `tests/job/**`, `tests/integration/test_fs_operations.cpp`
 - 변경 금지: his, mon, search, trash 모듈, 루트 빌드 파일, scripts, 억제 파일, docs, harness
 - 수용 조건: (a) ui-interaction에 2만 파일 트리 붙여넣기 → 취소 → 1초 안 취소 띠, 대상에 임시 파일 없음. (b) 복사 실행 중 Delete → "대기 1개" 표시, 복사 취소 후 휴지통 이동 완료. (c) 다른 파일 시스템 경로(테스트는 fs 쪽 장치 비교 함수를 테스트 훅으로 바꿔도 됨) 휴지통 실패 띠와 [영구 삭제…]. (d) 덮어쓰기 2단계, 첫 확인에서 Enter는 취소. (e) 감시 안 한 폴더에 외부 파일 생성 → 1초 안 목록 반영. (f) `x.txt` 충돌 시 `x (1).txt`, 이미 있으면 `x (2).txt`. (g) 감시 중지 버튼·빈 곳 메뉴·요약 창 × 각각으로 해제 → 헤더 경로 수 감소, 이후 그 폴더 변경이 로그에 안 들어옴. 기존 묶음 통과.
 - 필수 테스트 / 게이트: make verify, make integration, make ui-interaction, make stress, make tsan 10회(종료 코드)
