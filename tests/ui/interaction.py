@@ -280,6 +280,37 @@ def exercise(app, home, fixture):
     click(button("편집 취소"))
     print("PASS external edit conflict", flush=True)
 
+    scroll_folder = fixture / "unwatched-scroll"
+    scroll_folder.mkdir()
+    for i in range(400):
+        (scroll_folder / f"item-{i:03d}").touch()
+    navigate(scroll_folder)
+    button("감시 시작")
+    table = files()
+    model = table.get_table_iface()
+    wait("all scroll fixture rows are listed", lambda: model.get_n_rows() == 400)
+    scrollbar = next(node for node in descendants(table.get_parent())
+                     if node.get_role() == Atspi.Role.SCROLL_BAR
+                     and node.get_state_set().contains(Atspi.StateType.VERTICAL))
+    focus(table)
+    key("End")
+    key("Up", "Shift_L")
+    wait("two rows selected at the bottom",
+         lambda: model.is_row_selected(398) and model.is_row_selected(399))
+    offset = wait("list scrolled to bottom",
+                  lambda: offset if (offset := Atspi.Value.get_current_value(scrollbar)) > 1000
+                  else None)
+
+    (scroll_folder / "aaa-reload-marker").touch()
+    wait("external file triggers a reload", lambda: model.get_n_rows() == 401)
+    assert model.get_accessible_at(0, 0).get_name() == "aaa-reload-marker"
+    wait(f"scroll position stays at {offset} after reload",
+         lambda: abs(Atspi.Value.get_current_value(scrollbar) - offset) < 1)
+    assert model.get_selected_rows() == [399, 400], model.get_selected_rows()
+    key("Up")
+    wait("Up moves from the restored cursor", lambda: model.get_selected_rows() == [398])
+    print("PASS unwatched refresh preserves scroll position, selection and keyboard cursor", flush=True)
+
     navigate(fixture / "job-origin")
     select("job-source")
     key("c", "Control_L")

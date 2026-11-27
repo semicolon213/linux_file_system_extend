@@ -603,6 +603,7 @@ class MainWindow::Impl : public sigc::trackable {
         Gtk::MenuItem *blank_paste = nullptr;
         Gtk::MenuItem *watch_action = nullptr;
         sigc::connection selection_changed;
+        sigc::connection scroll_restore;
         Gtk::Stack *state = nullptr;
         Gtk::Label *error_label = nullptr;
         std::uint64_t generation = 0;
@@ -672,6 +673,7 @@ class MainWindow::Impl : public sigc::trackable {
         }
         stop_list_monitor();
         for (auto &tab : tabs_) {
+            tab->scroll_restore.disconnect();
             if (tab->cancellable) {
                 tab->cancellable->cancel();
             }
@@ -2219,6 +2221,7 @@ class MainWindow::Impl : public sigc::trackable {
     }
 
     void load_tab(Tab &tab, bool background = false) {
+        tab.scroll_restore.disconnect();
         if (tab.pending_history && current_tab() == &tab) {
             stop_list_monitor();
         }
@@ -2273,8 +2276,17 @@ class MainWindow::Impl : public sigc::trackable {
             tab->pending_history.reset();
         }
         const auto selection = tab->tree->get_selection();
+        const auto adjustment = tab->tree->get_vadjustment();
+        const double scroll_offset = adjustment->get_value();
+        std::string cursor_file;
+        Gtk::TreeViewColumn *cursor_column = nullptr;
         std::vector<std::string> selected;
         if (background) {
+            Gtk::TreeModel::Path cursor_path;
+            tab->tree->get_cursor(cursor_path, cursor_column);
+            if (!cursor_path.empty()) {
+                cursor_file = (*tab->model->get_iter(cursor_path))[file_columns_.path];
+            }
             for (const auto &path : selection->get_selected_rows()) {
                 const auto entry = tab->model->get_iter(path);
                 selected.push_back((*entry)[file_columns_.path]);
@@ -2301,6 +2313,15 @@ class MainWindow::Impl : public sigc::trackable {
         for (const auto &entry : entries) {
             append_entry(*tab, entry);
         }
+        if (const auto cursor = tab->rows.find(cursor_file); cursor != tab->rows.end()) {
+            const auto path = tab->model->get_path(cursor->second);
+            if (cursor_column) {
+                tab->tree->set_cursor(path, *cursor_column);
+            } else {
+                tab->tree->set_cursor(path);
+            }
+            selection->unselect_all();
+        }
         for (const auto &path : selected) {
             const auto entry = tab->rows.find(path);
             if (entry != tab->rows.end()) {
@@ -2315,6 +2336,13 @@ class MainWindow::Impl : public sigc::trackable {
             }
         }
         tab->state->set_visible_child(entries.empty() ? "empty" : "list");
+        if (background && !entries.empty() && !tab->pending_selection && !tab->pending_change) {
+            // GTK recomputes the adjustment bounds after the model changes.
+            tab->scroll_restore = Glib::signal_idle().connect([adjustment, scroll_offset] {
+                adjustment->set_value(scroll_offset);
+                return false;
+            });
+        }
         if (tab->pending_selection) {
             if (select_file(*tab, *tab->pending_selection) && current_tab() == tab &&
                 tab->tree->get_mapped()) {
