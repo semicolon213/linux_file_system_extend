@@ -57,6 +57,10 @@ void test_menu() {
     check_item(paused[12], TrayAction::PAUSE, "감시 재개");
     const auto overflow = tray_items(TrayState::RESYNCED, roots, changes, true);
     check_item(overflow[0], TrayAction::INFO, "대기열 넘침 · 다시 검사함");
+    const auto idle = tray_items(TrayState::IDLE, {}, changes, false);
+    check_item(idle[0], TrayAction::INFO, "FileScope: 감시 경로 없음");
+    check_item(idle[2], TrayAction::CHANGE, "▲ newest 수정    00:00:04");
+    check_item(idle[9], TrayAction::INFO, "감시 일시 정지");
 
     roots.emplace_back();
     roots.back().path = "/fourth";

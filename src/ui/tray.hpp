@@ -17,7 +17,7 @@ namespace presentation {
 std::optional<Gdk::RGBA> tick_color(int direction, std::int64_t elapsed);
 }
 
-enum class TrayState : std::uint8_t { ACTIVE, PAUSED, RESYNCING, RESYNCED, ERROR };
+enum class TrayState : std::uint8_t { ACTIVE, PAUSED, RESYNCING, RESYNCED, ERROR, IDLE };
 enum class TrayAction : std::uint8_t {
     INFO,
     SEPARATOR,
@@ -55,7 +55,7 @@ class Tray {
 
 class SummaryWindow final : public Gtk::Window {
   public:
-    explicit SummaryWindow(Tray::Activate activate);
+    SummaryWindow(Tray::Activate activate, sigc::slot<void(core::WatchId)> stop_watch);
     ~SummaryWindow() override;
 
     void open();

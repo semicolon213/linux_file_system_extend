@@ -5,6 +5,7 @@ from pathlib import Path
 import signal
 import subprocess
 import sys
+import tempfile
 import time
 
 import gi
@@ -26,7 +27,7 @@ Xtst.XTestFakeButtonEvent.argtypes = Xtst.XTestFakeKeyEvent.argtypes
 Xtst.XTestFakeMotionEvent.argtypes = [ct.c_void_p, ct.c_int, ct.c_int, ct.c_int, ct.c_ulong]
 display = X11.XOpenDisplay(None)
 assert display, "Xvfb display is unavailable"
-JOB_ITEMS = 16384
+JOB_ITEMS = 20000
 
 
 def key(symbol, *modifiers):
@@ -223,6 +224,11 @@ def exercise(app, home, fixture):
     focus(files())
     key("v", "Control_L")
     find(app, "같은 이름의 항목")
+    key("Return")
+    wait("Enter cancels the conflict dialog", lambda: not named(app, "같은 이름의 항목"))
+    assert not (second / "copy2.txt").exists()
+    key("v", "Control_L")
+    find(app, "같은 이름의 항목")
     button("건너뛰기")
     button("덮어쓰기")
     button("둘 다 유지")
@@ -230,6 +236,25 @@ def exercise(app, home, fixture):
     wait("second selected file copied", lambda: (second / "copy2.txt").is_file())
     assert (second / "copy.txt").read_text() == "existing"
     assert (first / "copy2.txt").is_file()
+
+    for confirm in (False, True):
+        focus(files())
+        key("v", "Control_L")
+        find(app, "같은 이름의 항목")
+        click(button("덮어쓰기"))
+        find(app, "2개 항목을 덮어씁니다.")
+        find(app, "덮어쓴 파일은 감시 중일 때만 이력에 남습니다")
+        cancel = button("취소")
+        assert cancel.get_state_set().contains(Atspi.StateType.IS_DEFAULT)
+        assert (second / "copy.txt").read_text() == "existing"
+        if confirm:
+            click(button("덮어쓰기"))
+            wait("confirmed overwrite replaces conflict",
+                 lambda: (second / "copy.txt").read_text() == "source")
+        else:
+            key("Return")
+        wait("overwrite confirmation closes", lambda: not named(app, "2개 항목을 덮어씁니다."))
+    print("PASS two-step overwrite and safe Enter defaults", flush=True)
 
     navigate(first)
     select("move.txt")
@@ -260,32 +285,59 @@ def exercise(app, home, fixture):
     key("c", "Control_L")
     job_target = fixture / "job-target"
     job_target.mkdir()
-    (job_target / "existing").touch()
+    for name in ("existing", "queued-cancel", "queued-trash", "warmup"):
+        (job_target / name).touch()
     navigate(job_target)
     file("existing")
+    table = files()
     (job_target / "reload-marker").touch()
-    assert row(files(), "reload-marker") is None
+    wait("external file reaches the unwatched list", lambda: row(table, "reload-marker"),
+         timeout=1)
+    assert not row(find(app, "이벤트 로그 목록"), str(job_target / "reload-marker"), 2)
+    select("warmup")
+    key("Delete")
+    wait("warmup job reaches Trash", lambda: (fixture / "data/Trash/files/warmup").is_file())
+    find(app, "파일 작업을 완료했습니다")
     focus(files())
     key("v", "Control_L")
     progress = wait("copy progress bar appears", lambda: next(
         (n for n in descendants(app) if n.get_role() == Atspi.Role.PROGRESS_BAR
          and showing(n)), None))
-    cancel = find(progress.get_parent(), "취소", Atspi.Role.PUSH_BUTTON)
-    assert cancel.get_action_iface().do_action(0)
-    wait("copy progress bar hides after cancellation", lambda: not showing(progress))
-    file("reload-marker")
-    find(app, "이 폴더를 감시하지 않습니다")
-    button("감시 시작")
+    select("queued-cancel")
+    key("Delete")
+    click(button("대기 1개"))
+    click(button("휴지통으로 이동 취소"))
+    wait("queued job leaves the waiting list", lambda: not named(app, "대기 1개"))
+    assert (job_target / "queued-cancel").is_file()
+    queued_result = find(app, "작업을 취소했습니다 · 완료된 항목 0개")
+    click(button("작업 결과 닫기"))
+    wait("queued cancellation result is dismissed", lambda: not showing(queued_result))
+
+    select("queued-trash")
+    key("Delete")
+    button("대기 1개")
+    assert (job_target / "queued-trash").is_file()
+    assert named(app, "파일 작업을 완료했습니다")
+    click(find(progress.get_parent(), "취소", Atspi.Role.PUSH_BUTTON))
     result = wait("cancellation result survives the reload", lambda: next(
         (n for n in descendants(app) if n.get_role() == Atspi.Role.LABEL
          and n.get_name().startswith("작업을 취소했습니다 · 완료된 항목 ") and showing(n)),
-        None))
+        None), timeout=1)
+    wait("queued Trash runs after copy cancellation",
+         lambda: (fixture / "data/Trash/files/queued-trash").is_file())
+    assert not named(app, "대기 1개")
+    assert not (job_target / "queued-trash").exists()
+    assert not list(job_target.rglob(".filescope-*"))
+    file("reload-marker")
+    find(app, "이 폴더를 감시하지 않습니다")
+    button("감시 시작")
     assert button("작업 결과 닫기").get_action_iface().do_action(0)
     wait("cancellation result can be dismissed", lambda: not showing(result))
     find(app, "이 폴더를 감시하지 않습니다")
     assert sum(1 for _ in (job_target / "job-source").glob("*")) < JOB_ITEMS
     assert sum(1 for _ in (fixture / "job-origin/job-source").iterdir()) == JOB_ITEMS
-    print("PASS copy progress and cancellation", flush=True)
+    print("PASS unwatched refresh, queued cancellation, 20000-file copy cancellation within 1s "
+          "and queued Trash", flush=True)
 
     navigate(second)
     log = find(app, "이벤트 로그 목록")
@@ -353,6 +405,40 @@ def exercise(app, home, fixture):
     log = find(app, "이벤트 로그 목록")
     first_file.chmod(0o600)
     wait("new watch delivers an event", lambda: row(log, str(first_file), 2))
+
+    def watch_count(count):
+        return next((node for node in descendants(app) if showing(node)
+                     and node.get_name().startswith(f"감시 경로 {count}   ")), None)
+
+    def stop_watch(action, marker):
+        wait("watch header shows both roots", lambda: watch_count(2))
+        action()
+        wait("watch header drops a root", lambda: watch_count(1), timeout=1)
+        find(app, "감시를 중지했습니다")
+        path = watched / marker
+        path.touch()
+        file(marker)
+        assert not row(log, str(path), 2)
+        assert row(log, str(first_file), 2)
+        click(button("감시 시작"))
+        button("감시 중지")
+
+    stop_watch(lambda: click(button("감시 중지")), "unlogged-after-button")
+
+    def stop_from_blank_menu():
+        bounds = files().get_component_iface().get_extents(Atspi.CoordType.SCREEN)
+        Xtst.XTestFakeMotionEvent(display, -1, bounds.x + bounds.width // 2,
+                                 bounds.y + bounds.height - 10, 0)
+        Xtst.XTestFakeButtonEvent(display, 3, True, 0)
+        Xtst.XTestFakeButtonEvent(display, 3, False, 0)
+        X11.XSync(display, False)
+        click(find(app, "이 폴더 감시 중지", Atspi.Role.MENU_ITEM))
+
+    stop_watch(stop_from_blank_menu, "unlogged-after-menu")
+    (watched / "unlogged-after-button").unlink()
+    (watched / "unlogged-after-menu").unlink()
+    print("PASS stop watching via folder band and blank menu, preserving earlier log entries",
+          flush=True)
 
     force_overflow(app, first_file, second_file)
     wait("RESYNC_DONE banner", lambda: next(
@@ -423,6 +509,29 @@ def run(binary, scenario):
                 process.kill()
 
 
+def exercise_trash_failure(app, source, data_home):
+    files = find(app, "파일 목록")
+    cell = wait("cross-device source is listed", lambda: row(files, source.name))
+    click(cell)
+    key("Delete")
+    find(app, "⚠ 휴지통 이동 실패 · 1개 항목 · 홈 휴지통으로 옮길 수 없습니다")
+    assert source.is_file()
+    assert not (data_home / "Trash/files" / source.name).exists()
+    delete = find(app, "영구 삭제…", Atspi.Role.PUSH_BUTTON)
+    click(delete)
+    find(app, "영구 삭제하시겠습니까?")
+    key("Return")
+    wait("permanent delete confirmation closes", lambda: not named(app, "영구 삭제하시겠습니까?"))
+    assert source.is_file()
+    click(delete)
+    find(app, "영구 삭제하시겠습니까?")
+    click(find(app, "영구 삭제", Atspi.Role.PUSH_BUTTON))
+    wait("only explicit permanent delete removes the failed item", lambda: not source.exists())
+    close(app)
+    print("PASS cross-device Trash failure band, separate permanent delete confirmation",
+          flush=True)
+
+
 def main():
     binary = str(Path(sys.argv[1]).resolve())
     fixture = Path(sys.argv[2])
@@ -439,7 +548,7 @@ def main():
     job_source = fixture / "job-origin/job-source"
     job_source.mkdir(parents=True)
     for i in range(JOB_ITEMS):
-        (job_source / f"item-{i:04d}").touch()
+        (job_source / f"item-{i:04d}").write_bytes(b"copy fixture\n")
 
     run(binary, lambda app: exercise(app, home, fixture))
 
@@ -451,6 +560,17 @@ def main():
 
     run(binary, restart)
     print("PASS favorite persists and window close exits", flush=True)
+    source = home / "cross-device.txt"
+    source.touch()
+    with tempfile.TemporaryDirectory(dir="/dev/shm") as tmp:
+        data_home = Path(tmp)
+        assert data_home.stat().st_dev != source.stat().st_dev
+        previous_data_home = os.environ["XDG_DATA_HOME"]
+        try:
+            os.environ["XDG_DATA_HOME"] = tmp
+            run(binary, lambda app: exercise_trash_failure(app, source, data_home))
+        finally:
+            os.environ["XDG_DATA_HOME"] = previous_data_home
 
 
 if __name__ == "__main__":
