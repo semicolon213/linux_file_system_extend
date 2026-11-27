@@ -549,6 +549,11 @@ def exercise_trash_failure(app, source, data_home):
     assert source.is_file()
     assert not (data_home / "Trash/files" / source.name).exists()
     delete = find(app, "영구 삭제…", Atspi.Role.PUSH_BUTTON)
+    row_component = delete.get_parent().get_component_iface()
+    revealer = delete.get_parent().get_parent().get_component_iface()
+    # AT-SPI reports the button as showing while the banner still clips it.
+    wait("Trash failure banner is fully revealed",
+         lambda: revealer.get_size().y >= row_component.get_size().y > 0)
     click(delete)
     find(app, "영구 삭제하시겠습니까?")
     key("Return")
