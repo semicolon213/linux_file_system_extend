@@ -642,3 +642,10 @@ R2 의존 순서: {R2-T00, R2-T01 병렬} → {R2-T02(T00 뒤), R2-T03, R2-T04, 
 - 수용 조건: (a) ui-interaction에 2만 파일 트리 붙여넣기 → 취소 → 1초 안 취소 띠, 대상에 임시 파일 없음. (b) 복사 실행 중 Delete → "대기 1개" 표시, 복사 취소 후 휴지통 이동 완료. (c) 다른 파일 시스템 경로(테스트는 fs 쪽 장치 비교 함수를 테스트 훅으로 바꿔도 됨) 휴지통 실패 띠와 [영구 삭제…]. (d) 덮어쓰기 2단계, 첫 확인에서 Enter는 취소. (e) 감시 안 한 폴더에 외부 파일 생성 → 1초 안 목록 반영. (f) `x.txt` 충돌 시 `x (1).txt`, 이미 있으면 `x (2).txt`. (g) 감시 중지 버튼·빈 곳 메뉴·요약 창 × 각각으로 해제 → 헤더 경로 수 감소, 이후 그 폴더 변경이 로그에 안 들어옴. 기존 묶음 통과.
 - 필수 테스트 / 게이트: make verify, make integration, make ui-interaction, make stress, make tsan 10회(종료 코드)
 - 공통: WSL Ubuntu-24.04에서 빌드·테스트, Codex 문서 수정 금지, 커밋에 Co-Authored-By 금지.
+
+### R2-F06 미감시 폴더 갱신 시 스크롤 보존
+
+- 출처: R2 묶음 QA(F03~F05) FAIL Major 1건(2026-11-27).
+- 목표: 미감시 폴더가 백그라운드로 목록을 다시 읽을 때 스크롤 위치, 커서, 선택을 유지한다.
+- 수용: ui-interaction "unwatched refresh preserves scroll position, selection and keyboard cursor" PASS. 휴지통 실패 띠 테스트의 클릭 타이밍도 보정했다(테스트만 수정).
+- 상태: VERIFY (병합 후 make verify 0, ui-interaction 3/3 0. integration·stress·benchmark 0과 tsan 10/10은 앱 코드가 같은 3177336에서 확인)
