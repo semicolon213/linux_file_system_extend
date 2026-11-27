@@ -11,7 +11,7 @@ Coordinator가 갱신한다. 작업별 ID, 담당, 기준 SHA, 상태, 차단 �
 | 빌드·테스트 하네스 | R0-002 C++ 전환 APPROVED (b7ca5d3) |
 | R0-002, R1-T01~T07 | APPROVED (R1 묶음 QA PASS, 8c469a9, docs/qa/r1-qa-report.md). 실제 Ubuntu 수동 검증(보고서 끝 체크리스트 15항목)은 사용자 수행 대기 |
 | R2 계약 | 승인 (2026-11-25, Coordinator, ad49d0b): DESIGN R2 추가·DB 스키마, ARCHITECTURE R2 모듈, ADR-0009(제안), TESTING §8, TASKS R2-T00~T11. |
-| R2 작업 | R2-T00~T11·F01 R2 묶음 QA PASS(3e49268). R2-F02(N1) 병합·해소 확인. APPROVED는 사용자 실제 Ubuntu 수동 점검(docs/qa/r2-qa-report.md 끝 1~30항목) 뒤 |
+| R2 작업 | R2-T00~T11·F01 R2 묶음 QA PASS(3e49268). R2-F02(N1) 병합·해소 확인. 수동 점검 1차 결함 R2-F03~F05 병합(d52523e, VERIFY). APPROVED는 사용자 실제 Ubuntu 수동 점검(docs/qa/r2-qa-report.md 끝 1~30항목) 뒤 |
 | R3~ | PLANNED |
 
 ### 이력
@@ -40,6 +40,8 @@ Coordinator가 갱신한다. 작업별 ID, 담당, 기준 SHA, 상태, 차단 �
 - 2026-11-26: R2-F01(f6b1cd2: his 종료 테스트 수정, CMakePresets g++ 고정), R2-T11(c08cce1) 병합. 병합 상태 게이트 직접 재실행(각각): verify·integration·stress·benchmark·ui-interaction 0, tsan 10/10. 루트 DESIGN.md 검색 진행 띠를 search 계약(진행 중 찾은 수만, 완료 시 폴더·접근 불가 수)에 맞춤. 작업자 보고 위험: 트레이 호스트 없는 Wayland ASan에서 libayatana-appindicator 읽기 오류(기준 재현) → R2 QA 판정 대상. R2 묶음 독립 QA 착수.
 - 2026-11-26: R2 묶음 독립 QA PASS(a5ed03f, 보고서 3e49268). 게이트 전부 0, tsan 10/10, shutdown 200회 0 실패, 기준 스냅샷 2만 파일 34.3초·조회 1.75ms. 발견: N1 Medium(트레이 호스트 없을 때 libayatana-appindicator 범위 밖 읽기, ASan 10/10 크래시, 일반 빌드 0/20) → R2-F02 배정. N2 Low(기준 스냅샷 순회가 EACCES 외 오류에 조용히 종료, 데이터 손실 없음) → R3 후보로 수용. GUI TSan 보고는 R1부터 있던 시스템 라이브러리 보고로 판정(회귀 아님).
 - 2026-11-26: R2-F02(a12201c) 병합: 트레이 아이콘을 svg 절대 경로로 넘기고 아이콘 테마 경로 API를 쓰지 않음. Coordinator 직접 검증(coord/asan-tray.sh): 트레이 호스트 없는 ASan 실행 수정 전 Wayland·X11 3/3 → 수정 후 각 0/10. 1차(set_icon_theme_path)는 10/10 재현. 병합 상태 게이트: verify·integration·stress·benchmark·ui-interaction 0, tsan 10/10. Codex 보안 필터가 라이브러리 메모리 오류 분석을 막아 첫 작업자를 중단하고 지시를 API 교체로 좁혀 재배정함. 실제 GNOME 패널 아이콘 표시는 수동 점검 대상.
+- 2026-11-26: 사용자 VMware Ubuntu(새 LTS, GCC 15.2, libayatana-appindicator3 0.5.94) 수동 점검 1차: 묶음 2(이력)·3(트레이)·4(트레이 없음 크래시)·10~12·15·16~29·검색·저장 충돌 통과. 발견: 새 Ubuntu 빌드 실패(deprecated -Werror), 홈 감시 시 이력 폴더 자기 감지 루프, 메뉴·감시 해제 없음, 둘 다 유지 (2) 시작, 덮어쓰기 추가 확인 없음, /tmp 휴지통 실패 무표시, 미감시 폴더 미갱신, 큰 복사 취소 불가. 사용자 결정: 이벤트 로그·세션 집계는 현재 폴더 기준, 파일 메뉴는 우클릭·별도 버튼, 둘 다 유지는 (1)부터. R2-F03·F04·F05 등록.
+- 2026-11-27: R2-F03(6b9f39a, tray 호출 구간 deprecated 국소 억제), R2-F04(ce62d5c, 이력 폴더 이벤트 제외·현재 폴더 기준 로그·집계·우클릭 메뉴·새로 만들기 버튼), R2-F05(ebfe104, 취소 원인: 완료 토스트가 취소 버튼 클릭을 가로챔; 덮어쓰기 2단계, 홈 휴지통 외 장치 사전 실패와 [영구 삭제], 대기 N개, 미감시 폴더 Gio 모니터 갱신, (1)부터 번호, 감시 중지 3곳, 트레이 "감시 경로 없음" 상태) 병합. F03·F04 병합 상태 tsan 1/10 실패는 병렬 작업자 부하 중 발생, 단독 20회 0/20. 최종 d52523e 게이트: verify·integration·stress·benchmark·ui-interaction 0, tsan 10/10. README 재작성. 남은 것: 사용자 VM 재빌드·재점검(9·휴지통·미리보기 비 UTF-8 문구·13·14), F03~F05 독립 QA는 R2 APPROVED 전 묶음으로.
 
 ## 2. 요구사항 추적표
 

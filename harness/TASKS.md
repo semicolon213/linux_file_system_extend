@@ -42,9 +42,9 @@
 | R2-T11 ui 검색·휴지통·미리보기 | VERIFY (c08cce1 병합, R2 묶음 QA 대기) | R2-T07, R2-T08, R2-T10, U-10 시안 확정 |
 | R2-F01 his 종료 테스트 간헐 실패, GCC 고정 | VERIFY (f6b1cd2 병합, R2 묶음 QA 대기) | R2-T05 |
 | R2-F02 트레이 생성 API 교체 (QA N1) | VERIFY (a12201c 병합, N1 해소 확인) | R2 QA |
-| R2-F03 새 Ubuntu LTS 빌드 호환 (트레이 deprecated) | READY | 사용자 수동 점검 |
-| R2-F04 로그·집계 범위와 파일 메뉴 (사용자 결정) | READY | 사용자 수동 점검 |
-| R2-F05 수동 점검 결함 묶음 (취소·덮어쓰기·휴지통·갱신·번호·감시 해제) | READY (R2-F04 병합 뒤) | R2-F04 |
+| R2-F03 새 Ubuntu LTS 빌드 호환 (트레이 deprecated) | VERIFY (6b9f39a 병합, 사용자 VM 빌드 확인 대기) | 사용자 수동 점검 |
+| R2-F04 로그·집계 범위와 파일 메뉴 (사용자 결정) | VERIFY (ce62d5c 병합) | 사용자 수동 점검 |
+| R2-F05 수동 점검 결함 묶음 (취소·덮어쓰기·휴지통·갱신·번호·감시 해제) | VERIFY (ebfe104 병합) | R2-F04 |
 
 의존 순서: R0-002 → R1-T01 → {R1-T02, R1-T04, R1-T05, R1-T07 병렬} → R1-T03(T02 필요) → R1-T06. 독립 QA는 R1 전체를 묶어 한 번 한다(R0-002 포함, PROGRESS 미결 사항 E-6).
 
@@ -594,7 +594,7 @@ R2 의존 순서: {R2-T00, R2-T01 병렬} → {R2-T02(T00 뒤), R2-T03, R2-T04, 
 ## R2-F03 새 Ubuntu LTS 빌드 호환 (트레이 deprecated)
 
 - Task ID / 요구사항 ID: R2-F03 / NFR-018
-- 상태: READY
+- 상태: VERIFY (병합, 게이트 통과 d52523e: verify·integration·stress·benchmark·ui 0, tsan 10/10. 사용자 VM 재점검 대기)
 - 배경: 사용자 VM(GCC 15.2, libayatana-appindicator3 0.5.94, glib 2.88)에서 `make build`가 `src/ui/tray.cpp:166` `app_indicator_new` deprecated 경고(-Werror)로 실패한다. 0.5.94는 라이브러리 전체를 deprecated로 표시한다(실행 시 경고도 나옴).
 - 목표: 24.04(0.5.93)와 새 버전(0.5.94 이상) 모두 경고 없이 빌드된다. 트레이 동작은 그대로다. `-Werror`는 유지하고, 억제가 필요하면 `src/ui/tray.cpp`의 appindicator 호출 구간에만 `G_GNUC_BEGIN_IGNORE_DEPRECATIONS`/`G_GNUC_END_IGNORE_DEPRECATIONS`로 국소 적용한다. 대체 라이브러리(libayatana-appindicator-glib) 전환은 하지 않는다(24.04에 없음).
 - 허용 파일: `src/ui/tray.cpp`
@@ -606,7 +606,7 @@ R2 의존 순서: {R2-T00, R2-T01 병렬} → {R2-T02(T00 뒤), R2-T03, R2-T04, 
 ## R2-F04 로그·집계 범위와 파일 메뉴 (사용자 결정)
 
 - Task ID / 요구사항 ID: R2-F04 / UI-015, DASH-001, 루트 DESIGN.md "Event Log"·"Menu & Toast"(2026-11-26 추가 문단)
-- 상태: READY
+- 상태: VERIFY (병합, 게이트 통과 d52523e: verify·integration·stress·benchmark·ui 0, tsan 10/10. 사용자 VM 재점검 대기)
 - 배경: 사용자 VM 수동 점검에서 (1) 홈을 감시하면 이력 저장 폴더(`~/.local/share/filescope/blobs`, `tmp/capture-*`)의 변경이 이벤트 로그와 집계에 계속 쌓였고, (2) 새 파일·새 폴더를 찾을 메뉴가 없었다(빈 폴더 화면 버튼과 단축키뿐).
 - 목표:
   1. 이력 저장 폴더(ui의 history_dir_) 아래 경로의 이벤트는 이벤트 로그, 세션 집계, 1분봉, 헤더 지표, 변경 내용 패널 폴더 행 어디에도 반영하지 않는다(`his::is_excluded`가 맞으면 재사용).
@@ -622,7 +622,7 @@ R2 의존 순서: {R2-T00, R2-T01 병렬} → {R2-T02(T00 뒤), R2-T03, R2-T04, 
 ## R2-F05 수동 점검 결함 묶음 (취소·덮어쓰기·휴지통·갱신·번호·감시 해제)
 
 - Task ID / 요구사항 ID: R2-F05 / FS-006·FS-007(복사·충돌), FS-009(휴지통), NFR-015, UI-015, docs/DESIGN.md fs ConflictPolicy(2026-11-26 갱신)
-- 상태: READY (R2-F04 병합 뒤 그 SHA 기준)
+- 상태: VERIFY (병합, 게이트 통과 d52523e: verify·integration·stress·benchmark·ui 0, tsan 10/10. 사용자 VM 재점검 대기)
 - 배경(사용자 VM 수동 점검, Ubuntu 새 LTS, 테스트 폴더는 `/tmp/tmp.*`):
   - 큰 폴더(`/usr/share/icons` 사본) 붙여넣기 중 작업 띠 "취소"를 눌러도 취소 결과 띠가 나오지 않고 작업이 계속됐다. 정적 검토로는 job·fs 취소 경로에서 원인을 못 찾았다(복사 루프는 is_cancelled를 본다). 재현부터 한다.
   - 그 직후 Delete(휴지통으로 이동)가 아무 반응이 없었다. job 큐 작업자가 한 개라 앞의 복사가 끝날 때까지 대기했을 가능성, `/tmp`(tmpfs)는 홈 휴지통으로 못 옮기는 경우를 모두 의심한다.
